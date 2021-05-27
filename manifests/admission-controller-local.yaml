@@ -1,0 +1,23 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: bridgekeeper-webhook
+webhooks:
+  - name: webhook.bridgekeeper.k8s
+    namespaceSelector:
+      matchExpressions:
+      - key: bridgekeeper/ignore
+        operator: DoesNotExist
+    clientConfig:
+      url: "https://<host>/mutate"
+      caBundle: "<cadata>"
+    matchPolicy: Equivalent
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["*"]
+        apiVersions: ["*"]
+        resources: ["*"]
+    failurePolicy: Ignore
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 5

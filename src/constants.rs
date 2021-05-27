@@ -1,0 +1,9 @@
+pub const LOCAL_CERTS_DIR: &'static str = ".certs";
+pub const POD_CERTS_DIR: &'static str = "/certs";
+pub const CERT_FILENAME: &'static str = "tls.crt";
+pub const KEY_FILENAME: &'static str = "tls.key";
+pub const CACERT_FILENAME: &'static str = "tls.key";
+pub const SECRET_NAME: &'static str = "bridgekeeper-webhook-server-cert";
+pub const WEBHOOK_NAME: &'static str = "bridgekeeper-webhook";
+pub const SERVICE_NAME: &'static str = "bridgekeeper-webhook";
+pub const MANAGER_NAME: &'static str = "bridgekeeper";

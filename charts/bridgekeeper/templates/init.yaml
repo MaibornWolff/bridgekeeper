@@ -1,0 +1,40 @@
+{{- if .Values.bridgekeeper.runInit }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "bridgekeeper-init"
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+spec:
+  template:
+    metadata:
+      name: "bridgekeeper-init"
+      labels:
+        {{- include "bridgekeeper.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "bridgekeeper.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      containers:
+      - name: bridgekeeper-init
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - bridgekeeper
+        args:
+          - init
+          {{- range .Values.bridgekeeper.ignoreNamespaces }}
+          - "--ignore-namespace"
+          - {{ . | quote }}
+          {{- end }}
+        env:
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+{{- end }}

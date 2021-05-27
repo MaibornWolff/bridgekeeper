@@ -1,0 +1,32 @@
+use crate::constants::*;
+use argh::FromArgs;
+use k8s_openapi::api::{admissionregistration::v1::MutatingWebhookConfiguration, core::v1::Secret};
+use kube::{api::Api, Client};
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "cleanup")]
+/// Delete cert secret and webhook
+pub struct Args {
+    /// local mode, do not delete secret
+    #[argh(switch)]
+    local: bool,
+}
+
+pub async fn run(args: Args) {
+    let client = Client::try_default().await.unwrap();
+    let namespace = std::env::var("NAMESPACE").unwrap_or("default".into());
+
+    // Delete webhook
+    let webhook_api: kube::Api<MutatingWebhookConfiguration> = kube::Api::all(client.clone());
+    if let Err(err) = webhook_api.delete(WEBHOOK_NAME, &Default::default()).await {
+        println!("Encountered error when deleting webhook: {}", err);
+    }
+
+    // Delete secret
+    if !args.local {
+        let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
+        if let Err(err) = secret_api.delete(SECRET_NAME, &Default::default()).await {
+            println!("Encountered error when deleting secret: {}", err);
+        }
+    }
+}

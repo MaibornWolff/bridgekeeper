@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bridgekeeper
+description: A Helm chart for bridgekeeper
+
+type: application
+version: 0.0.1

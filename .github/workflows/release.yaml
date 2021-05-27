@@ -1,0 +1,56 @@
+name: release
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  IMAGE_NAME: bridgekeeper
+  GITHUB_REF: ${{ github.ref }}
+
+jobs:
+  release:
+    name: Create new release
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Check out the repo
+        uses: actions/checkout@v2
+
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image to GitHub Container Registry
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          TAG=${GITHUB_REF//refs\/tags\/v}
+          docker build . -t $IMAGE_ID:$TAG
+          docker push $IMAGE_ID:$TAG
+
+      - name: Prepare helm chart
+        run: |
+          VERSION=${GITHUB_REF//refs\/tags\/v}
+          sed -i 's/0.0.1/'"${VERSION}"'/' charts/bridgekeeper/Chart.yaml
+          sed -i 's/dev/'"${VERSION}"'/' charts/bridgekeeper/values.yaml
+
+      - name: Publish helm chart
+        uses: stefanprodan/helm-gh-pages@master
+        with:
+          charts_dir: charts/
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: "${{ github.ref }}"
+          draft: true
+          prerelease: false

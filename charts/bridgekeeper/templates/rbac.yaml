@@ -1,0 +1,86 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+  name: bridgekeeper-role
+rules:
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+    - ""
+  resources:
+  - namespaces
+  verbs:
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+  name: bridgekeeper-role
+  namespace: "{{ .Release.Namespace }}"
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+  name: bridgekeeper-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bridgekeeper-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "bridgekeeper.serviceAccountName" . }}
+  namespace: "{{ .Release.Namespace }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+  name: bridgekeeper-rolebinding
+  namespace: "{{ .Release.Namespace }}"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bridgekeeper-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "bridgekeeper.serviceAccountName" . }}
+  namespace: "{{ .Release.Namespace }}"

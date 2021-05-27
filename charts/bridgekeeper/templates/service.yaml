@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bridgekeeper-webhook
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: 8081
+  selector:
+    {{- include "bridgekeeper.selectorLabels" . | nindent 4 }}
