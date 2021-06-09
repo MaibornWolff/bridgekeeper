@@ -1,5 +1,6 @@
 use crate::{
     constraint::{ConstraintInfo, ConstraintStoreRef},
+    crd::Constraint,
     events::{ConstraintEvent, ConstraintEventData, EventSender},
 };
 use kube::api::{admission::AdmissionRequest, DynamicObject};
@@ -84,6 +85,24 @@ impl ConstraintEvaluator {
             (true, None)
         } else {
             panic!("Should not happen");
+        }
+    }
+
+    pub fn validate_constraint(
+        &self,
+        request: &AdmissionRequest<Constraint>,
+    ) -> (bool, Option<String>) {
+        if let Some(constraint) = request.object.as_ref() {
+            let python_code = constraint.spec.rule.python.clone();
+            Python::with_gil(|py| {
+                if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
+                    (false, Some(format!("Python compile error: {:?}", err)))
+                } else {
+                    (true, None)
+                }
+            })
+        } else {
+            (false, Some("No rule found".to_string()))
         }
     }
 }

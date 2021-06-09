@@ -1,6 +1,9 @@
 use crate::constants::*;
 use argh::FromArgs;
-use k8s_openapi::api::{admissionregistration::v1::MutatingWebhookConfiguration, core::v1::Secret};
+use k8s_openapi::api::{
+    admissionregistration::v1::{MutatingWebhookConfiguration, ValidatingWebhookConfiguration},
+    core::v1::Secret,
+};
 use kube::{api::Api, Client};
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -19,7 +22,14 @@ pub async fn run(args: Args) {
     // Delete webhook
     let webhook_api: kube::Api<MutatingWebhookConfiguration> = kube::Api::all(client.clone());
     if let Err(err) = webhook_api.delete(WEBHOOK_NAME, &Default::default()).await {
-        println!("Encountered error when deleting webhook: {}", err);
+        println!("Encountered error when deleting admission webhook: {}", err);
+    }
+    let webhook_api: kube::Api<ValidatingWebhookConfiguration> = kube::Api::all(client.clone());
+    if let Err(err) = webhook_api.delete(WEBHOOK_NAME, &Default::default()).await {
+        println!(
+            "Encountered error when deleting constraint validation webhook: {}",
+            err
+        );
     }
 
     // Delete secret

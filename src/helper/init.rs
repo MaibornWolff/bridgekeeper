@@ -1,7 +1,7 @@
-use crate::constants::*;
+use crate::{constants::*, util::cert::CertKeyPair};
 use argh::FromArgs;
 use k8s_openapi::api::{
-    admissionregistration::v1::MutatingWebhookConfiguration,
+    admissionregistration::v1::{MutatingWebhookConfiguration, ValidatingWebhookConfiguration},
     core::v1::{Namespace, Secret},
 };
 use k8s_openapi::ByteString;
@@ -9,8 +9,9 @@ use kube::{
     api::Api,
     api::PatchParams,
     api::{ObjectMeta, Patch},
-    Client,
+    Client, Resource,
 };
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
 use std::io::prelude::*;
 use std::{
@@ -92,28 +93,31 @@ pub async fn run(args: Args) {
         Assets::get("admission-controller.yaml")
     }
     .unwrap();
-    let mut webhook_data = String::from_utf8(webhook_data.to_vec()).unwrap();
-    webhook_data = webhook_data
-        .replace("<cadata>", &base64::encode(cert.cert))
-        .replace("<namespace>", &namespace);
-    if let Some(local_name) = args.local {
-        webhook_data =
-            webhook_data.replace("<host>", &local_name.to_lowercase().replace("ip:", ""));
-    }
-    let webhook_data = serde_yaml::from_str(&webhook_data).unwrap();
+    let webhook_data = String::from_utf8(webhook_data.to_vec()).unwrap();
+    apply_webhook::<MutatingWebhookConfiguration>(
+        &client,
+        webhook_data,
+        &cert,
+        &namespace,
+        &args.local,
+    )
+    .await;
 
-    let webhook_api: kube::Api<MutatingWebhookConfiguration> = kube::Api::all(client.clone());
-    if let Ok(_res) = webhook_api.get(WEBHOOK_NAME).await {
-        println!("Webhook already exists. Deleting old resource");
-        match webhook_api.delete(WEBHOOK_NAME, &Default::default()).await {
-            Ok(_res) => (),
-            Err(err) => println!("{:?}", err),
-        };
+    let webhook_data = if args.local.is_some() {
+        Assets::get("constraint-validation-controller-local.yaml")
+    } else {
+        Assets::get("constraint-validation-controller.yaml")
     }
-    match webhook_api.create(&Default::default(), &webhook_data).await {
-        Ok(_res) => (),
-        Err(err) => println!("{:?}", err),
-    };
+    .unwrap();
+    let webhook_data = String::from_utf8(webhook_data.to_vec()).unwrap();
+    apply_webhook::<ValidatingWebhookConfiguration>(
+        &client,
+        webhook_data,
+        &cert,
+        &namespace,
+        &args.local,
+    )
+    .await;
 
     // Patch namespaces
     let namespace_api: Api<Namespace> = Api::all(client.clone());
@@ -133,4 +137,40 @@ pub async fn run(args: Args) {
                 .unwrap();
         }
     }
+}
+
+async fn apply_webhook<T: Resource>(
+    client: &kube::Client,
+    webhook_data: String,
+    cert: &CertKeyPair,
+    namespace: &String,
+    local: &Option<String>,
+) where
+    <T as Resource>::DynamicType: Default,
+    T: Clone,
+    T: Serialize,
+    T: DeserializeOwned,
+    T: std::fmt::Debug,
+{
+    let mut webhook_data = webhook_data
+        .replace("<cadata>", &base64::encode(cert.cert.clone()))
+        .replace("<namespace>", &namespace);
+    if let Some(local_name) = local {
+        webhook_data =
+            webhook_data.replace("<host>", &local_name.to_lowercase().replace("ip:", ""));
+    }
+    let webhook_data = serde_yaml::from_str(&webhook_data).unwrap();
+
+    let webhook_api: kube::Api<T> = kube::Api::all(client.clone());
+    if let Ok(_res) = webhook_api.get(WEBHOOK_NAME).await {
+        println!("Webhook already exists. Deleting old resource");
+        match webhook_api.delete(WEBHOOK_NAME, &Default::default()).await {
+            Ok(_res) => (),
+            Err(err) => println!("{:?}", err),
+        };
+    }
+    match webhook_api.create(&Default::default(), &webhook_data).await {
+        Ok(_res) => (),
+        Err(err) => println!("{:?}", err),
+    };
 }

@@ -99,7 +99,6 @@ As long as you do not change the schema of the constraints you can just recompil
 ## Planned features
 
 * Prometheus Metrics
-* Validate the python script in constraints during creation
 * Give rules access to existing objects of the same type (to do e.g. uniqueness checks)
 * Check existing resources against constraints (audit)
 * Ability to modify/patch resources
