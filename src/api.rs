@@ -2,8 +2,8 @@ use rocket::{config::TlsConfig, Config, State};
 use rocket_contrib::json::Json;
 use std::convert::TryInto;
 
+use crate::evaluator::ConstraintEvaluatorRef;
 use crate::util::cert::CertKeyPair;
-use crate::watcher::Constraints;
 use kube::api::{
     admission::{AdmissionResponse, AdmissionReview},
     DynamicObject,
@@ -17,15 +17,15 @@ async fn health() -> &'static str {
 #[rocket::post("/mutate", data = "<data>")]
 async fn admission_mutate(
     data: Json<AdmissionReview<DynamicObject>>,
-    constraints: &State<Constraints>,
+    evaluator: &State<ConstraintEvaluatorRef>,
 ) -> Json<AdmissionReview<DynamicObject>> {
     let admission_review = data.0;
     let admission_request = admission_review.try_into().unwrap();
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let constraints = constraints.lock().unwrap();
+    let evaluator = evaluator.lock().unwrap();
 
-    let (allowed, reason) = constraints.evaluate_constraints(&admission_request);
+    let (allowed, reason) = evaluator.evaluate_constraints(&admission_request);
     response.allowed = allowed;
     if !allowed {
         response.result.message = reason;
@@ -36,7 +36,7 @@ async fn admission_mutate(
     Json(review)
 }
 
-pub async fn server(cert: CertKeyPair, watcher: Constraints) {
+pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
     let config = Config {
         address: "0.0.0.0".parse().unwrap(),
         port: 8081,
@@ -49,7 +49,7 @@ pub async fn server(cert: CertKeyPair, watcher: Constraints) {
     };
 
     rocket::custom(&config)
-        .manage(watcher)
+        .manage(evaluator)
         .mount("/", rocket::routes![admission_mutate, health])
         .launch()
         .await

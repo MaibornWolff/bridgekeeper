@@ -2,11 +2,14 @@ use argh::FromArgs;
 
 mod api;
 mod constants;
+mod constraint;
 mod crd;
+mod evaluator;
+mod events;
 mod helper;
+mod manager;
 mod server;
 mod util;
-mod watcher;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// bridgekeeper

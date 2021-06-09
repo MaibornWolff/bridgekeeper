@@ -36,6 +36,7 @@ pub struct Rule {
     pub python: String,
 }
 
+
 #[cfg(test)]
 impl Match {
     pub fn new(api_group: &str, kind: &str) -> Match {

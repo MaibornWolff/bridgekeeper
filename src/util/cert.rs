@@ -1,9 +1,8 @@
+use crate::constants::{CERT_FILENAME, KEY_FILENAME};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::{thread, time};
-
-use crate::constants::{CERT_FILENAME, KEY_FILENAME};
 
 pub struct CertKeyPair {
     pub cert: String,

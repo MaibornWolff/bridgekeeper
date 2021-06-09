@@ -1,7 +1,10 @@
 use argh::FromArgs;
-use tokio::task;
 
 use crate::constants::POD_CERTS_DIR;
+use crate::constraint::ConstraintStore;
+use crate::evaluator::ConstraintEvaluator;
+use crate::events::init_event_watcher;
+use crate::manager::Manager;
 
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "server")]
@@ -18,14 +21,14 @@ pub async fn run(args: Args) {
     let cert_dir = args.cert_dir.unwrap_or(POD_CERTS_DIR.to_string());
     let cert = crate::util::cert::wait_for_certs(cert_dir);
 
-    // Launch watcher
-    let mut watcher = crate::watcher::Watcher::new(client);
-    watcher.init().await;
-    let constraints = watcher.get_constraints();
-    task::spawn(async move {
-        watcher.start().await;
-    });
+    // Initiate services
+    let constraints = ConstraintStore::new();
+    let event_sender = init_event_watcher(&client);
+    let mut manager = Manager::new(client, constraints.clone(), event_sender.clone());
+    let evaluator = ConstraintEvaluator::new(constraints.clone(), event_sender.clone());
+    manager.start().await;
+    manager.load_existing_constraints().await;
 
     // Launch API with webhook endpoint
-    crate::api::server(cert, constraints).await;
+    crate::api::server(cert, evaluator).await;
 }
