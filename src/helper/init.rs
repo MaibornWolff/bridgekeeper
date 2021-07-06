@@ -68,10 +68,10 @@ pub async fn run(args: Args) {
             ByteString(cert.key.as_bytes().to_vec()),
         );
         let secret = Secret {
-            data: Some(data),
+            data: data,
             immutable: None,
             metadata,
-            string_data: None,
+            string_data: BTreeMap::new(),
             type_: None,
         };
         if let Ok(_) = secret_api.get(&SECRET_NAME).await {

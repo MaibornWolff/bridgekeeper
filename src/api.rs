@@ -5,8 +5,7 @@ use kube::api::{
     admission::{AdmissionResponse, AdmissionReview},
     DynamicObject,
 };
-use rocket::{config::TlsConfig, Config, State};
-use rocket_contrib::json::Json;
+use rocket::{config::TlsConfig, serde::json::Json, Config, State};
 use std::convert::TryInto;
 
 #[rocket::get("/health")]

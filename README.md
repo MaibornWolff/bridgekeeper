@@ -67,11 +67,11 @@ Constraints are not namespaced and apply to the entire cluster unless `target.na
 
 ## Developer Guide
 
-This service is written ins Rust and uses [kube-rs](https://github.com/clux/kube-rs) as kubernetes client, [rocket](https://rocket.rs/) as HTTP server and [PyO3](https://pyo3.rs/) as python bindings.
+This service is written ins Rust and uses [kube-rs](https://github.com/clux/kube-rs) as kubernetes client, [rocket](https://rocket.rs/) as web framework and [PyO3](https://pyo3.rs/) as python bindings.
 
 ### Requirements
 
-* Current stable Rust (version >=1.50) with cargo
+* Current stable Rust (version >=1.53) with cargo
 * Python >= 3.8 with shared library (pyenv by default does not provide a shared library, install with `PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install <version>` to enable it)
 * A kubernetes cluster (version >= 1.19) with cluster-admin permissions, this guide assumes a local [k3s](https://k3s.io/) cluster set up with [k3d](https://k3d.io/)
 * kubectl, helm

@@ -23,6 +23,7 @@ impl ConstraintEvaluator {
             constraints,
             event_sender,
         };
+        pyo3::prepare_freethreaded_python();
         Arc::new(Mutex::new(evaluator))
     }
 
@@ -119,29 +120,28 @@ fn evaluate_constraint(
             "rule.py",
             "bridgekeeper",
         ) {
-            if let Ok(result) = rule_code.call1("validate", (obj,)) {
-                let extracted_result: Result<(bool, String), PyErr> = result.extract();
-                match extracted_result {
-                    Ok(result) => (result.0, Some(result.1)),
-                    Err(_) => match result.extract() {
-                        Ok(result) => (result, None),
-                        Err(_) => (
-                            false,
-                            Some(
-                                "Validation function did not return expected return types"
-                                    .to_string(),
-                            ),
-                        ),
-                    },
+            if let Ok(validation_function) = rule_code.getattr("validate") {
+                if let Ok(result) = validation_function.call1((obj,)) {
+                    let extracted_result: Result<(bool, String), PyErr> = result.extract();
+                    match extracted_result {
+                        Ok(result) => (result.0, Some(result.1)),
+                        Err(_) => match result.extract() {
+                            Ok(result) => (result, None),
+                            Err(_) => fail("Validation function did not return expected types"),
+                        },
+                    }
+                } else {
+                    fail("Validation function failed")
                 }
             } else {
-                (false, Some("Validation function failed".to_string()))
+                fail("Validation function not found in code")
             }
         } else {
-            (
-                false,
-                Some("Validation function could not be compiled".to_string()),
-            )
+            fail("Validation function could not be compiled")
         }
     })
+}
+
+fn fail(reason: &str) -> (bool, Option<String>) {
+    (false, Some(reason.to_string()))
 }
