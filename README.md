@@ -23,8 +23,14 @@ Bridgekeeper is very similar to and heavily inspired by [OPA gatekeeper](https:/
 
 ### Installation
 
+If you want to use a released version (note: currently there is not yet a release):
+
 1. Add the helm repo: `helm repo add bridgekeeper https://maibornwolff.github.io/bridgekeeper/`
 2. Install the chart: `helm install --namespace bridgekeeper --create-namespace bridgekeeper bridgekeeper/bridgekeeper`
+
+If you want to use the current master version:
+
+1. Install the chart: `helm install --namespace bridgekeeper --create-namespace bridgekeeper ./charts/bridgekeeper`
 
 ### Writing constraints
 
