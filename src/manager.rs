@@ -11,6 +11,18 @@ use kube::{
 use kube_runtime::{watcher, watcher::Event};
 use tokio::task;
 
+use lazy_static::lazy_static;
+use prometheus::register_gauge;
+use prometheus::Gauge;
+
+lazy_static! {
+    static ref ACTIVE_CONSTRAINTS: Gauge = register_gauge!(
+        "bridgekeeper_constraints_active",
+        "Number of active constraints."
+    )
+    .unwrap();
+}
+
 pub struct Manager {
     k8s_client: Client,
     constraints: ConstraintStoreRef,
@@ -37,6 +49,7 @@ impl Manager {
             let mut constraints = self.constraints.lock().unwrap();
             for constraint in res {
                 let ref_info = constraints.add_constraint(constraint);
+                ACTIVE_CONSTRAINTS.inc();
                 self.event_sender
                     .send(ConstraintEvent {
                         constraint_reference: ref_info,
@@ -62,6 +75,7 @@ impl Manager {
                         Event::Applied(constraint) => {
                             let mut constraints = constraints.lock().unwrap();
                             let ref_info = constraints.add_constraint(constraint);
+                            ACTIVE_CONSTRAINTS.inc();
                             event_sender
                                 .send(ConstraintEvent {
                                     constraint_reference: ref_info,
@@ -74,6 +88,7 @@ impl Manager {
                         Event::Deleted(constraint) => {
                             let mut constraints = constraints.lock().unwrap();
                             constraints.remove_constraint(constraint);
+                            ACTIVE_CONSTRAINTS.dec();
                         }
                         _ => (),
                     }

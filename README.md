@@ -23,12 +23,12 @@ Bridgekeeper is very similar to and heavily inspired by [OPA gatekeeper](https:/
 
 ### Installation
 
-If you want to use a released version (note: currently there is not yet a release):
+If you want to use a released version:
 
 1. Add the helm repo: `helm repo add bridgekeeper https://maibornwolff.github.io/bridgekeeper/`
 2. Install the chart: `helm install --namespace bridgekeeper --create-namespace bridgekeeper bridgekeeper/bridgekeeper`
 
-If you want to use the current master version:
+If you want to use the current master version from git:
 
 1. Install the chart: `helm install --namespace bridgekeeper --create-namespace bridgekeeper ./charts/bridgekeeper`
 
@@ -73,7 +73,7 @@ Constraints are not namespaced and apply to the entire cluster unless `target.na
 
 ## Developer Guide
 
-This service is written ins Rust and uses [kube-rs](https://github.com/clux/kube-rs) as kubernetes client, [rocket](https://rocket.rs/) as web framework and [PyO3](https://pyo3.rs/) as python bindings.
+This service is written in Rust and uses [kube-rs](https://github.com/clux/kube-rs) as kubernetes client, [rocket](https://rocket.rs/) as web framework and [PyO3](https://pyo3.rs/) as python bindings.
 
 ### Requirements
 
@@ -104,7 +104,6 @@ As long as you do not change the schema of the constraints you can just recompil
 
 ## Planned features
 
-* Prometheus Metrics
 * Give rules access to existing objects of the same type (to do e.g. uniqueness checks)
 * Check existing resources against constraints (audit)
 * Ability to modify/patch resources

@@ -4,8 +4,44 @@ use crate::{
     events::{ConstraintEvent, ConstraintEventData, EventSender},
 };
 use kube::api::{admission::AdmissionRequest, DynamicObject};
+use lazy_static::lazy_static;
+use prometheus::register_counter_vec;
+use prometheus::CounterVec;
 use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
+
+lazy_static! {
+    static ref MATCHED_CONSTRAINTS: CounterVec = register_counter_vec!(
+        "bridgekeeper_constraint_matched",
+        "Number of admissions matched to a constraint.",
+        &["name"]
+    )
+    .unwrap();
+    static ref CONSTRAINT_EVALUATIONS_SUCCESS: CounterVec = register_counter_vec!(
+        "bridgekeeper_constraint_evaluated_success",
+        "Number of successfull constraint evaluations",
+        &["name"]
+    )
+    .unwrap();
+    static ref CONSTRAINT_EVALUATIONS_REJECT: CounterVec = register_counter_vec!(
+        "bridgekeeper_constraint_evaluated_reject",
+        "Number of failed constraint evaluations.",
+        &["name"]
+    )
+    .unwrap();
+    static ref CONSTRAINT_EVALUATIONS_ERROR: CounterVec = register_counter_vec!(
+        "bridgekeeper_constraint_evaluated_error",
+        "Number of constraint evaluations that had an error.",
+        &["name"]
+    )
+    .unwrap();
+    static ref CONSTRAINT_VALIDATIONS_FAIL: CounterVec = register_counter_vec!(
+        "bridgekeeper_constraint_validation_fail",
+        "Number of constraint validations that failed.",
+        &["name"]
+    )
+    .unwrap();
+}
 
 pub struct ConstraintEvaluator {
     constraints: ConstraintStoreRef,
@@ -36,6 +72,9 @@ impl ConstraintEvaluator {
         if let Ok(constraints) = self.constraints.lock() {
             for value in constraints.constraints.values() {
                 if value.is_match(&gvk, &namespace) {
+                    MATCHED_CONSTRAINTS
+                        .with_label_values(&[value.name.as_str()])
+                        .inc();
                     log::info!(
                         "Resource {}/{}.{}/{} matches in constraint {}",
                         namespace.clone().unwrap_or("-".to_string()),
@@ -63,8 +102,14 @@ impl ConstraintEvaluator {
                         })
                         .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
                     if res.0 {
+                        CONSTRAINT_EVALUATIONS_SUCCESS
+                            .with_label_values(&[value.name.as_str()])
+                            .inc();
                         log::info!("Constraint '{}' evaluates to {}", value.name, res.0);
                     } else {
+                        CONSTRAINT_EVALUATIONS_REJECT
+                            .with_label_values(&[value.name.as_str()])
+                            .inc();
                         log::info!(
                             "Constraint '{}' evaluates to {} with message '{}'",
                             value.name,
@@ -97,6 +142,9 @@ impl ConstraintEvaluator {
             let python_code = constraint.spec.rule.python.clone();
             Python::with_gil(|py| {
                 if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
+                    CONSTRAINT_VALIDATIONS_FAIL
+                        .with_label_values(&[constraint.metadata.name.as_ref().unwrap().as_str()])
+                        .inc();
                     (false, Some(format!("Python compile error: {:?}", err)))
                 } else {
                     (true, None)
@@ -112,6 +160,7 @@ fn evaluate_constraint(
     constraint: &ConstraintInfo,
     request: &AdmissionRequest<DynamicObject>,
 ) -> (bool, Option<String>) {
+    let name = &constraint.name;
     Python::with_gil(|py| {
         let obj = pythonize::pythonize(py, &request).unwrap();
         if let Ok(rule_code) = PyModule::from_code(
@@ -127,21 +176,26 @@ fn evaluate_constraint(
                         Ok(result) => (result.0, Some(result.1)),
                         Err(_) => match result.extract() {
                             Ok(result) => (result, None),
-                            Err(_) => fail("Validation function did not return expected types"),
+                            Err(_) => {
+                                fail(name, "Validation function did not return expected types")
+                            }
                         },
                     }
                 } else {
-                    fail("Validation function failed")
+                    fail(name, "Validation function failed")
                 }
             } else {
-                fail("Validation function not found in code")
+                fail(name, "Validation function not found in code")
             }
         } else {
-            fail("Validation function could not be compiled")
+            fail(name, "Validation function could not be compiled")
         }
     })
 }
 
-fn fail(reason: &str) -> (bool, Option<String>) {
+fn fail(name: &String, reason: &str) -> (bool, Option<String>) {
+    CONSTRAINT_EVALUATIONS_ERROR
+        .with_label_values(&[name.as_str()])
+        .inc();
     (false, Some(reason.to_string()))
 }

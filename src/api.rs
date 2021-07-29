@@ -5,11 +5,26 @@ use kube::api::{
     admission::{AdmissionResponse, AdmissionReview},
     DynamicObject,
 };
+use lazy_static::lazy_static;
+use prometheus::register_counter_vec;
+use prometheus::CounterVec;
+use prometheus::{Encoder, TextEncoder};
+use rocket::http::ContentType;
 use rocket::{config::TlsConfig, serde::json::Json, Config, State};
 use std::convert::TryInto;
 
+lazy_static! {
+    static ref HTTP_REQUEST_COUNTER: CounterVec = register_counter_vec!(
+        "bridgekeeper_http_requests_total",
+        "Number of HTTP requests made.",
+        &["path"]
+    )
+    .unwrap();
+}
+
 #[rocket::get("/health")]
 async fn health() -> &'static str {
+    HTTP_REQUEST_COUNTER.with_label_values(&["/health"]).inc();
     "OK"
 }
 
@@ -18,6 +33,7 @@ async fn admission_mutate(
     data: Json<AdmissionReview<DynamicObject>>,
     evaluator: &State<ConstraintEvaluatorRef>,
 ) -> Json<AdmissionReview<DynamicObject>> {
+    HTTP_REQUEST_COUNTER.with_label_values(&["/mutate"]).inc();
     let admission_review = data.0;
     let admission_request = admission_review.try_into().unwrap();
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
@@ -40,6 +56,9 @@ async fn validate_constraint(
     data: Json<AdmissionReview<Constraint>>,
     evaluator: &State<ConstraintEvaluatorRef>,
 ) -> Json<AdmissionReview<DynamicObject>> {
+    HTTP_REQUEST_COUNTER
+        .with_label_values(&["/validate_constraint"])
+        .inc();
     let admission_review = data.0;
     let admission_request = admission_review.try_into().unwrap();
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
@@ -55,6 +74,20 @@ async fn validate_constraint(
 
     let review = response.into_review();
     Json(review)
+}
+
+#[rocket::get("/metrics")]
+async fn metrics() -> (ContentType, String) {
+    HTTP_REQUEST_COUNTER.with_label_values(&["/metrics"]).inc();
+    let encoder = TextEncoder::new();
+    let metric_families = prometheus::gather();
+    let mut buffer = vec![];
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+    let body = String::from_utf8(buffer).unwrap();
+    (
+        ContentType::parse_flexible(encoder.format_type()).unwrap(),
+        body,
+    )
 }
 
 pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
@@ -73,7 +106,7 @@ pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
         .manage(evaluator)
         .mount(
             "/",
-            rocket::routes![admission_mutate, validate_constraint, health],
+            rocket::routes![admission_mutate, validate_constraint, health, metrics],
         )
         .launch()
         .await
