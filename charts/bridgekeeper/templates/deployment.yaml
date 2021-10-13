@@ -36,6 +36,11 @@ spec:
             - bridgekeeper
           args:
             - server
+            {{- if .Values.bridgekeeper.audit.enabled }}
+            - --audit
+            - "--audit-interval"
+            - "{{ .Values.bridgekeeper.audit.interval }}"
+            {{- end }}
           env:
             - name: NAMESPACE
               valueFrom:

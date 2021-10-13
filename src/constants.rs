@@ -7,3 +7,4 @@ pub const SECRET_NAME: &'static str = "bridgekeeper-webhook-server-cert";
 pub const WEBHOOK_NAME: &'static str = "bridgekeeper-webhook";
 pub const SERVICE_NAME: &'static str = "bridgekeeper-webhook";
 pub const MANAGER_NAME: &'static str = "bridgekeeper";
+pub const CRD_FILEPATH: &'static str = "charts/bridgekeeper/crds/constraint.yaml";

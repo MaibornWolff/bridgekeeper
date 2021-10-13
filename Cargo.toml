@@ -33,4 +33,5 @@ prometheus = {version = "0.12.0", features = ["process"]}
 lto = true
 opt-level = 'z'  # Optimize for size.
 codegen-units = 1
-#panic = 'abort'
+# When a panic in a task occures we want the whole process to crash to trigger a kubernetes pod restart
+panic = 'abort'

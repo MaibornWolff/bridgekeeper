@@ -4,6 +4,18 @@ use kube::api::GroupVersionKind;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use lazy_static::lazy_static;
+use prometheus::register_gauge;
+use prometheus::Gauge;
+
+lazy_static! {
+    static ref ACTIVE_CONSTRAINTS: Gauge = register_gauge!(
+        "bridgekeeper_constraints_active",
+        "Number of active constraints."
+    )
+    .unwrap();
+}
+
 pub struct ConstraintStore {
     pub constraints: HashMap<String, ConstraintInfo>,
 }
@@ -104,22 +116,47 @@ impl ConstraintInfo {
         }
         false
     }
+
+    pub fn is_namespace_match(&self, target_namespace: &String) -> bool {
+        if let Some(namespaces) = &self.constraint.target.namespaces {
+            return namespaces.contains(target_namespace);
+        } else if let Some(excluded_namespaces) = &self.constraint.target.excluded_namespaces {
+            return !excluded_namespaces.contains(target_namespace);
+        } else {
+            return true;
+        }
+    }
 }
 
 impl ConstraintStore {
-    pub fn add_constraint(&mut self, constraint: Constraint) -> ConstraintObjectReference {
+    pub fn add_constraint(&mut self, constraint: Constraint) -> Option<ConstraintObjectReference> {
         let ref_info = create_object_reference(&constraint);
         let name = constraint.metadata.name.unwrap();
-        let constraint_info = ConstraintInfo::new(name.clone(), constraint.spec, ref_info.clone());
-        log::info!("Constraint '{}' added", name);
-        self.constraints.insert(name, constraint_info);
-        ref_info
+        if let Some(existing_constraint_info) = self.constraints.get(&name) {
+            if existing_constraint_info.constraint != constraint.spec {
+                let constraint_info =
+                    ConstraintInfo::new(name.clone(), constraint.spec, ref_info.clone());
+                log::info!("Constraint '{}' updated", name);
+                self.constraints.insert(name, constraint_info);
+                Some(ref_info)
+            } else {
+                None
+            }
+        } else {
+            let constraint_info =
+                ConstraintInfo::new(name.clone(), constraint.spec, ref_info.clone());
+            log::info!("Constraint '{}' added", name);
+            self.constraints.insert(name, constraint_info);
+            ACTIVE_CONSTRAINTS.inc();
+            Some(ref_info)
+        }
     }
 
     pub fn remove_constraint(&mut self, constraint: Constraint) {
         let name = constraint.metadata.name.unwrap();
         log::info!("Constraint '{}' removed", name);
         self.constraints.remove(&name);
+        ACTIVE_CONSTRAINTS.dec();
     }
 }
 
@@ -228,6 +265,49 @@ mod tests {
         assert!(
             !constraint_no_match_group.is_match(&gvk, &namespace),
             "group should not have matched"
+        );
+    }
+
+    #[test]
+    fn test_is_namespace_match() {
+        let target = Target::from_match(Match::new("example.com", "foobar"));
+        let mut constraint = ConstraintInfo::new(
+            "foo".to_string(),
+            ConstraintSpec::from_target(target),
+            Default::default(),
+        );
+
+        constraint.constraint.target.namespaces = Some(vec!["foobar".to_string()]);
+        constraint.constraint.target.excluded_namespaces = None;
+        assert!(
+            constraint.is_namespace_match(&"foobar".to_string()),
+            "namespace should have matched"
+        );
+
+        constraint.constraint.target.namespaces = None;
+        constraint.constraint.target.excluded_namespaces = Some(vec!["foobar".to_string()]);
+        assert!(
+            constraint.is_namespace_match(&"default".to_string()),
+            "namespace should have matched"
+        );
+        assert!(
+            !constraint.is_namespace_match(&"foobar".to_string()),
+            "namespace should not have matched"
+        );
+
+        constraint.constraint.target.namespaces = Some(vec!["default".to_string()]);
+        constraint.constraint.target.excluded_namespaces = Some(vec!["foobar".to_string()]);
+        assert!(
+            constraint.is_namespace_match(&"default".to_string()),
+            "namespace should have matched"
+        );
+        assert!(
+            !constraint.is_namespace_match(&"foobar".to_string()),
+            "namespace should not have matched"
+        );
+        assert!(
+            !constraint.is_namespace_match(&"anythingelse".to_string()),
+            "namespace should have matched"
         );
     }
 }

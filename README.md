@@ -56,6 +56,7 @@ spec:
 
 The constraint has the following fields:
 
+* `audit`: If set to true and bridgekeeper is started with the audit feature enabled this constraint will be checked during audit runs (see also next section).
 * `target.matches`: A list of one or more match parameters consisting of `apiGroup` and `kind`. Wildcards can be used as `"*"`, if the resource has no API group (e.g. namespaces) use an empty string `""`.
 * `target.namespaces`: An optional list of strings, if specified only resources from one of these namespaces are matched, only this or `target.excludedNamespaces` can be specified, not both
 * `target.excludedNamespaces`: An optional list of strings, if specified resources from one of these namespaces are not matched, only this or `target.namespaces` can be specified, not both
@@ -70,6 +71,18 @@ You can find a more useful example under [example/constraint.yaml](example/const
 3. `kubectl apply -f example/deployment-ok.yaml` will be accepted because the docker image tag uses a specific version
 
 Constraints are not namespaced and apply to the entire cluster unless `target.namespaces` or `target.excludedNamespaces` are used to filter namespaces. To completely exclude a namespace from bridgekeeper label it with `bridgekeeper/ignore`. If you use the helm chart to install bridgekeeper you can set the option `bridgekeeper.ignoreNamespaces` to a list of namespaces that should be labled and it will be done during initial install (by default it will label the `kube-*` namespaces).
+
+### Auditing
+
+Bridgekeeper has an audit feature that periodically checks if any existing objects violate constraints. This is useful to check objects that were created before the constraint was installed.
+
+To enable the audit feature launch bridgekeeper with the `--audit` flag. The audit interval is by default 10 minutes and can be changed with `--audit-interval <seconds>`. If installed using helm audit can be enabled by setting `bridgekeeper.audit.enable` to `true`.
+
+To include a constraint in the audit run set the `spec.audit` field to `yes`. The namespace include/exclude lists of the constraints and the `bridgekeeper/ignore` label on namespaces is honored during audit runs. The results of the run will be stored in the status of the constraint with a list of objects that violate the constraint and the provided reason if any.
+
+A single audit run can also be launched locally: `bridgekeeper audit`. This will connect to the kubernetes cluster defined by the currently active kubernetes context (as kubectl would use it), read in all existing constraints and perform an audit run. All objects that violate a constraint are printed on the console as output, this can be disabled by providing `--silent`. By adding the `--status` flag the constraint status will also be updated with the violations.
+
+Note: Currently the audit feature only works correctly if you launch bridgekeeper as a single instance (in helm `replicaCount: 1`).
 
 ## Developer Guide
 
@@ -95,6 +108,7 @@ After you are finished, run `cargo run -- cleanup --local` to delete the webook.
 ### Development cycle
 
 As long as you do not change the schema of the constraints you can just recompile and restart the server without having to reinstall any of the other stuff (certificate, webhook, constraints).
+If you change the schema of the CRD (via `src/crd.rs`) you need to regenerate the CRD yaml by running `cargo run -- gencrd`.
 
 ### Test cluster deployment
 
@@ -105,5 +119,4 @@ As long as you do not change the schema of the constraints you can just recompil
 ## Planned features
 
 * Give rules access to existing objects of the same type (to do e.g. uniqueness checks)
-* Check existing resources against constraints (audit)
 * Ability to modify/patch resources

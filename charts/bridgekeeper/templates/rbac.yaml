@@ -5,6 +5,7 @@ metadata:
     {{- include "bridgekeeper.labels" . | nindent 4 }}
   name: bridgekeeper-role
 rules:
+# During audit runs bridgekeeper needs to potentially access all resources in the cluster 
 - apiGroups:
   - '*'
   resources:
@@ -13,10 +14,12 @@ rules:
   - get
   - list
   - watch
+# The init job needs to create/update the webhook configurations
 - apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
   verbs:
   - create
   - delete
@@ -25,13 +28,31 @@ rules:
   - patch
   - update
   - watch
+# The init job needs to update namespaces with the ignore label
 - apiGroups:
-    - ""
+  - ""
   resources:
   - namespaces
   verbs:
   - patch
   - update
+# During audit runs bridgekeeper needs to update the constraint status with the audit results
+- apiGroups:
+  - "bridgekeeper.maibornwolff.de"
+  resources:
+  - constraints
+  - constraints/status
+  verbs:
+  - patch
+  - update
+# Bridgekeeper sends events for certain actions
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -41,6 +62,7 @@ metadata:
   name: bridgekeeper-role
   namespace: "{{ .Release.Namespace }}"
 rules:
+# The init job creates a secret with the TLS certificate, the main program needs to read it
 - apiGroups:
   - ""
   resources:

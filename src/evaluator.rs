@@ -8,6 +8,7 @@ use lazy_static::lazy_static;
 use prometheus::register_counter_vec;
 use prometheus::CounterVec;
 use pyo3::prelude::*;
+use serde_derive::Serialize;
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
@@ -41,6 +42,18 @@ lazy_static! {
         &["name"]
     )
     .unwrap();
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DummyOperation {
+    Audit,
+}
+
+#[derive(Serialize)]
+pub struct AuditRequest {
+    pub object: DynamicObject,
+    pub operation: DummyOperation,
 }
 
 pub struct ConstraintEvaluator {
@@ -161,6 +174,47 @@ fn evaluate_constraint(
     request: &AdmissionRequest<DynamicObject>,
 ) -> (bool, Option<String>) {
     let name = &constraint.name;
+    Python::with_gil(|py| {
+        let obj = pythonize::pythonize(py, &request).unwrap();
+        if let Ok(rule_code) = PyModule::from_code(
+            py,
+            &constraint.constraint.rule.python,
+            "rule.py",
+            "bridgekeeper",
+        ) {
+            if let Ok(validation_function) = rule_code.getattr("validate") {
+                if let Ok(result) = validation_function.call1((obj,)) {
+                    let extracted_result: Result<(bool, String), PyErr> = result.extract();
+                    match extracted_result {
+                        Ok(result) => (result.0, Some(result.1)),
+                        Err(_) => match result.extract() {
+                            Ok(result) => (result, None),
+                            Err(_) => {
+                                fail(name, "Validation function did not return expected types")
+                            }
+                        },
+                    }
+                } else {
+                    fail(name, "Validation function failed")
+                }
+            } else {
+                fail(name, "Validation function not found in code")
+            }
+        } else {
+            fail(name, "Validation function could not be compiled")
+        }
+    })
+}
+
+pub fn evaluate_constraint_audit(
+    constraint: &ConstraintInfo,
+    object: DynamicObject,
+) -> (bool, Option<String>) {
+    let name = &constraint.name;
+    let request = AuditRequest {
+        object,
+        operation: DummyOperation::Audit,
+    };
     Python::with_gil(|py| {
         let obj = pythonize::pythonize(py, &request).unwrap();
         if let Ok(rule_code) = PyModule::from_code(

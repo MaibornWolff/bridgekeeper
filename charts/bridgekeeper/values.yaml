@@ -59,3 +59,8 @@ bridgekeeper:
     - kube-node-lease
   # Set this to false if you want to take care of creating and installing the server cert and the webhook configuration yourself
   runInit: true
+  audit: 
+    # Set this to true if you want bridgekeeper to run regular audits
+    enabled: false
+    # Audit interval in seconds
+    interval: 600

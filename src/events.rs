@@ -29,8 +29,7 @@ pub enum ConstraintEventData {
 
 pub fn init_event_watcher(client: &Client) -> EventSender {
     let (sender, mut receiver) = mpsc::unbounded_channel::<ConstraintEvent>();
-    let namespace = std::env::var("NAMESPACE").unwrap_or("default".to_string());
-    let events_api: Api<KubeEvent> = Api::namespaced(client.clone(), &namespace);
+    let events_api: Api<KubeEvent> = Api::namespaced(client.clone(), "default");
     task::spawn(async move {
         let instance = std::env::var("POD_NAME").unwrap_or("dev".to_string());
         while let Some(event) = receiver.recv().await {
@@ -62,14 +61,15 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
                     ));
                 }
             }
-            if let Err(_err) = events_api.create(&PostParams::default(), &kube_event).await {
+            if let Err(err) = events_api.create(&PostParams::default(), &kube_event).await {
                 log::warn!(
-                    "Could not create event for constraint {}",
+                    "Could not create event for constraint {}. Reason: {}",
                     event
                         .constraint_reference
                         .name
                         .clone()
-                        .unwrap_or("-".to_string())
+                        .unwrap_or("-".to_string()),
+                    err
                 );
             }
         }

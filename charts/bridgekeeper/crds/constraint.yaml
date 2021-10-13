@@ -1,51 +1,93 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: constraints.bridgekeeper.maibornwolff.de
 spec:
   group: bridgekeeper.maibornwolff.de
+  names:
+    kind: Constraint
+    plural: constraints
+    singular: constraint
+  scope: Cluster
   versions:
     - name: v1alpha1
-      served: true
-      storage: true
       schema:
         openAPIV3Schema:
-          type: object
+          description: "Auto-generated derived type for ConstraintSpec via `CustomResource`"
           properties:
             spec:
-              type: object
               properties:
-                target:
-                  type: object
-                  properties:
-                    matches:
-                      type: array
-                      minItems: 1
-                      items:
-                        type: object
-                        properties:
-                          apiGroup: 
-                            type: string
-                          kind: 
-                            type: string
-                    namespaces:
-                      type: array
-                      items:
-                        type: string
-                    excludedNamespaces:
-                      type: array
-                      items:
-                        type: string
+                audit:
+                  nullable: true
+                  type: boolean
                 rule:
-                  type: object
                   properties:
                     python:
                       type: string
-  scope: Cluster
-  names:
-    plural: constraints
-    singular: constraint
-    kind: Constraint
-    shortNames:
-      - constr
-      - con
+                  required:
+                    - python
+                  type: object
+                target:
+                  properties:
+                    excludedNamespaces:
+                      items:
+                        type: string
+                      nullable: true
+                      type: array
+                    matches:
+                      items:
+                        properties:
+                          apiGroup:
+                            type: string
+                          kind:
+                            type: string
+                        required:
+                          - apiGroup
+                          - kind
+                        type: object
+                      type: array
+                    namespaces:
+                      items:
+                        type: string
+                      nullable: true
+                      type: array
+                  required:
+                    - matches
+                  type: object
+              required:
+                - rule
+                - target
+              type: object
+            status:
+              nullable: true
+              properties:
+                audit:
+                  nullable: true
+                  properties:
+                    timestamp:
+                      nullable: true
+                      type: string
+                    violations:
+                      items:
+                        properties:
+                          identifier:
+                            type: string
+                          message:
+                            type: string
+                        required:
+                          - identifier
+                          - message
+                        type: object
+                      nullable: true
+                      type: array
+                  type: object
+              type: object
+          required:
+            - spec
+          title: Constraint
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
