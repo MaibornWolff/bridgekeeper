@@ -6,9 +6,7 @@ use k8s_openapi::api::{
 };
 use k8s_openapi::ByteString;
 use kube::{
-    api::Api,
-    api::PatchParams,
-    api::{ObjectMeta, Patch},
+    api::{Api, ObjectMeta, Patch, PatchParams},
     Client, Resource,
 };
 use serde::{de::DeserializeOwned, Serialize};

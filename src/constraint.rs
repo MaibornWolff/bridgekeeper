@@ -1,12 +1,10 @@
 use crate::crd::{Constraint, ConstraintSpec};
 use k8s_openapi::api::core::v1::ObjectReference as KubeObjectReference;
 use kube::api::GroupVersionKind;
+use lazy_static::lazy_static;
+use prometheus::{register_gauge, Gauge};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
-use lazy_static::lazy_static;
-use prometheus::register_gauge;
-use prometheus::Gauge;
 
 lazy_static! {
     static ref ACTIVE_CONSTRAINTS: Gauge = register_gauge!(

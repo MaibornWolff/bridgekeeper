@@ -15,6 +15,7 @@ pub struct ConstraintSpec {
     pub target: Target,
     pub rule: Rule,
     pub audit: Option<bool>,
+    pub enforce: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Hash, PartialEq, Eq, JsonSchema)]
@@ -101,6 +102,7 @@ impl ConstraintSpec {
     pub fn from_target(target: Target) -> ConstraintSpec {
         ConstraintSpec {
             audit: Some(false),
+            enforce: Some(true),
             target,
             rule: Default::default(),
         }

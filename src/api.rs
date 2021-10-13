@@ -6,9 +6,7 @@ use kube::api::{
     DynamicObject,
 };
 use lazy_static::lazy_static;
-use prometheus::register_counter_vec;
-use prometheus::CounterVec;
-use prometheus::{Encoder, TextEncoder};
+use prometheus::{register_counter_vec, CounterVec, Encoder, TextEncoder};
 use rocket::http::ContentType;
 use rocket::{config::TlsConfig, serde::json::Json, Config, State};
 use std::convert::TryInto;

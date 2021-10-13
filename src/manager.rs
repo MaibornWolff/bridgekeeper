@@ -1,5 +1,5 @@
-use crate::constraint::ConstraintStoreRef;
 use crate::{
+    constraint::ConstraintStoreRef,
     crd::Constraint,
     events::{ConstraintEvent, ConstraintEventData, EventSender},
 };

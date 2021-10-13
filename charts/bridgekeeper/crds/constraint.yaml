@@ -21,6 +21,9 @@ spec:
                 audit:
                   nullable: true
                   type: boolean
+                enforce:
+                  nullable: true
+                  type: boolean
                 rule:
                   properties:
                     python:

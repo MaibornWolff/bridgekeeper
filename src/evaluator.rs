@@ -5,8 +5,7 @@ use crate::{
 };
 use kube::api::{admission::AdmissionRequest, DynamicObject};
 use lazy_static::lazy_static;
-use prometheus::register_counter_vec;
-use prometheus::CounterVec;
+use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
 use serde_derive::Serialize;
 use std::sync::{Arc, Mutex};
@@ -89,10 +88,10 @@ impl ConstraintEvaluator {
                         .with_label_values(&[value.name.as_str()])
                         .inc();
                     log::info!(
-                        "Resource {}/{}.{}/{} matches in constraint {}",
-                        namespace.clone().unwrap_or("-".to_string()),
+                        "Object {}.{}/{}/{} matches constraint {}",
                         gvk.kind,
                         gvk.group,
+                        namespace.clone().unwrap_or("-".to_string()),
                         request.name,
                         value.name
                     );
@@ -129,21 +128,16 @@ impl ConstraintEvaluator {
                             res.0,
                             res.1.as_ref().unwrap()
                         );
-                        // If one constraint fails no need to evaluate the others
-                        return res;
+                        if value.constraint.enforce.unwrap_or(true) {
+                            // If one constraint fails no need to evaluate the others
+                            return res;
+                        }
                     }
                 }
             }
-            log::debug!(
-                "No constraint found for request: {} of {}/{} in namespace '{:?}'",
-                request.name,
-                gvk.group,
-                gvk.kind,
-                namespace
-            );
             (true, None)
         } else {
-            panic!("Should not happen");
+            panic!("Could not lock constraints mutex");
         }
     }
 

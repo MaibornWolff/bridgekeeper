@@ -54,9 +54,10 @@ spec:
         return False, "You don't want to deploy anything today"
 ```
 
-The constraint has the following fields:
+The constraint spec has the following fields:
 
 * `audit`: If set to true and bridgekeeper is started with the audit feature enabled this constraint will be checked during audit runs (see also next section).
+* `enforce`: If set to false a constraint violation will be logged but the request will still be allowed. Defaults to true. Can be used to safely test constraints.
 * `target.matches`: A list of one or more match parameters consisting of `apiGroup` and `kind`. Wildcards can be used as `"*"`, if the resource has no API group (e.g. namespaces) use an empty string `""`.
 * `target.namespaces`: An optional list of strings, if specified only resources from one of these namespaces are matched, only this or `target.excludedNamespaces` can be specified, not both
 * `target.excludedNamespaces`: An optional list of strings, if specified resources from one of these namespaces are not matched, only this or `target.namespaces` can be specified, not both

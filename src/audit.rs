@@ -1,25 +1,20 @@
-use std::time::SystemTime;
-
 use crate::constraint::{ConstraintInfo, ConstraintStore, ConstraintStoreRef};
-use crate::crd::Constraint;
-use crate::crd::{ConstraintStatus, Violation};
+use crate::crd::{Constraint, ConstraintStatus, Violation};
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use argh::FromArgs;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{APIGroup, APIResource};
 use k8s_openapi::chrono::{DateTime, Utc};
-use kube::api::{DynamicObject, GroupVersionKind, Patch, PatchParams};
-use kube::core::ApiResource as KubeApiResource;
 use kube::{
-    api::{Api, ListParams},
-    Client,
+    api::{Api, DynamicObject, GroupVersionKind, ListParams, Patch, PatchParams},
+    core::ApiResource as KubeApiResource,
+    Client, CustomResourceExt, Resource,
 };
-use kube::{CustomResourceExt, Resource};
 use lazy_static::lazy_static;
-use prometheus::{register_counter, register_gauge};
-use prometheus::{Counter, Gauge};
+use prometheus::{register_counter, register_gauge, Counter, Gauge};
 use serde_json::json;
+use std::time::SystemTime;
 use tokio::task;
 use tokio::time::{sleep, Duration};
 
