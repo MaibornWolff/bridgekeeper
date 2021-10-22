@@ -78,7 +78,8 @@ impl ConstraintEvaluator {
     pub fn evaluate_constraints(
         &self,
         request: &AdmissionRequest<DynamicObject>,
-    ) -> (bool, Option<String>) {
+    ) -> (bool, Option<String>, Vec<String>) {
+        let mut warnings = Vec::new();
         let namespace = request.namespace.clone();
         let gvk = &request.kind;
         if let Ok(constraints) = self.constraints.lock() {
@@ -118,6 +119,9 @@ impl ConstraintEvaluator {
                             .with_label_values(&[value.name.as_str()])
                             .inc();
                         log::info!("Constraint '{}' evaluates to {}", value.name, res.0);
+                        if res.1.is_some() {
+                            warnings.push(res.1.unwrap());
+                        }
                     } else {
                         CONSTRAINT_EVALUATIONS_REJECT
                             .with_label_values(&[value.name.as_str()])
@@ -130,12 +134,14 @@ impl ConstraintEvaluator {
                         );
                         if value.constraint.enforce.unwrap_or(true) {
                             // If one constraint fails no need to evaluate the others
-                            return res;
+                            return (res.0, res.1, warnings);
+                        } else {
+                            warnings.push(res.1.unwrap());
                         }
                     }
                 }
             }
-            (true, None)
+            (true, None, warnings)
         } else {
             panic!("Could not lock constraints mutex");
         }

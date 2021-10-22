@@ -38,8 +38,11 @@ async fn admission_mutate(
 
     let evaluator = evaluator.lock().unwrap();
 
-    let (allowed, reason) = evaluator.evaluate_constraints(&admission_request);
+    let (allowed, reason, warnings) = evaluator.evaluate_constraints(&admission_request);
     response.allowed = allowed;
+    if !warnings.is_empty() {
+        response.warnings = Some(warnings);
+    }
     if !allowed {
         response.result.message = reason;
         response.result.code = Some(403);
