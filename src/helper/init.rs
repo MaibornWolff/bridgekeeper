@@ -36,7 +36,7 @@ struct Assets;
 
 pub async fn run(args: Args) {
     let client = Client::try_default().await.unwrap();
-    let namespace = std::env::var("NAMESPACE").unwrap_or("default".into());
+    let namespace = std::env::var("NAMESPACE").unwrap_or_else(|_| "default".into());
 
     // Create and store certificate
     let cert =
@@ -49,9 +49,7 @@ pub async fn run(args: Args) {
         key_file.write_all(cert.key.as_bytes()).unwrap();
     } else {
         let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
-        let mut metadata = ObjectMeta::default();
-        metadata.namespace = Some(namespace.clone());
-        metadata.name = Some(SECRET_NAME.to_string());
+        let metadata = ObjectMeta{name: Some(SECRET_NAME.to_string()), namespace: Some(namespace.clone()), ..Default::default()};
         let mut data: BTreeMap<String, ByteString> = std::collections::BTreeMap::new();
         data.insert(
             CACERT_FILENAME.to_string(),
@@ -66,15 +64,15 @@ pub async fn run(args: Args) {
             ByteString(cert.key.as_bytes().to_vec()),
         );
         let secret = Secret {
-            data: data,
+            data: Some(data),
             immutable: None,
             metadata,
-            string_data: BTreeMap::new(),
+            string_data: None,
             type_: None,
         };
-        if let Ok(_) = secret_api.get(&SECRET_NAME).await {
+        if secret_api.get(SECRET_NAME).await.is_ok() {
             secret_api
-                .delete(&SECRET_NAME, &Default::default())
+                .delete(SECRET_NAME, &Default::default())
                 .await
                 .unwrap();
         }
@@ -91,7 +89,7 @@ pub async fn run(args: Args) {
         Assets::get("admission-controller.yaml")
     }
     .unwrap();
-    let webhook_data = String::from_utf8(webhook_data.to_vec()).unwrap();
+    let webhook_data = String::from_utf8(webhook_data.data.to_vec()).unwrap();
     apply_webhook::<MutatingWebhookConfiguration>(
         &client,
         webhook_data,
@@ -107,7 +105,7 @@ pub async fn run(args: Args) {
         Assets::get("constraint-validation-controller.yaml")
     }
     .unwrap();
-    let webhook_data = String::from_utf8(webhook_data.to_vec()).unwrap();
+    let webhook_data = String::from_utf8(webhook_data.data.to_vec()).unwrap();
     apply_webhook::<ValidatingWebhookConfiguration>(
         &client,
         webhook_data,
@@ -120,7 +118,7 @@ pub async fn run(args: Args) {
     // Patch namespaces
     let namespace_api: Api<Namespace> = Api::all(client.clone());
     for namespace in args.ignore_namespace {
-        if let Ok(_) = namespace_api.get(&namespace).await {
+        if namespace_api.get(&namespace).await.is_ok() {
             let patch_params = PatchParams::apply(MANAGER_NAME);
             let patch = Patch::Merge(json!({
                 "metadata": {
@@ -141,7 +139,7 @@ async fn apply_webhook<T: Resource>(
     client: &kube::Client,
     webhook_data: String,
     cert: &CertKeyPair,
-    namespace: &String,
+    namespace: &str,
     local: &Option<String>,
 ) where
     <T as Resource>::DynamicType: Default,
@@ -152,7 +150,7 @@ async fn apply_webhook<T: Resource>(
 {
     let mut webhook_data = webhook_data
         .replace("<cadata>", &base64::encode(cert.cert.clone()))
-        .replace("<namespace>", &namespace);
+        .replace("<namespace>", namespace);
     if let Some(local_name) = local {
         webhook_data =
             webhook_data.replace("<host>", &local_name.to_lowercase().replace("ip:", ""));

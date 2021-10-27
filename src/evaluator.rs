@@ -3,7 +3,7 @@ use crate::{
     crd::Constraint,
     events::{ConstraintEvent, ConstraintEventData, EventSender},
 };
-use kube::api::{admission::AdmissionRequest, DynamicObject};
+use kube::core::{admission::AdmissionRequest, DynamicObject};
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
@@ -84,7 +84,7 @@ impl ConstraintEvaluator {
         let gvk = &request.kind;
         if let Ok(constraints) = self.constraints.lock() {
             for value in constraints.constraints.values() {
-                if value.is_match(&gvk, &namespace) {
+                if value.is_match(gvk, &namespace) {
                     MATCHED_CONSTRAINTS
                         .with_label_values(&[value.name.as_str()])
                         .inc();
@@ -92,7 +92,7 @@ impl ConstraintEvaluator {
                         "Object {}.{}/{}/{} matches constraint {}",
                         gvk.kind,
                         gvk.group,
-                        namespace.clone().unwrap_or("-".to_string()),
+                        namespace.clone().unwrap_or_else(|| "-".to_string()),
                         request.name,
                         value.name
                     );
@@ -100,14 +100,14 @@ impl ConstraintEvaluator {
                         "{}/{}/{}/{}",
                         gvk.group,
                         gvk.kind,
-                        namespace.clone().unwrap_or("-".to_string()),
+                        namespace.clone().unwrap_or_else(|| "-".to_string()),
                         request.name
                     );
-                    let res = evaluate_constraint(&value, request);
+                    let res = evaluate_constraint(value, request);
                     self.event_sender
                         .send(ConstraintEvent {
                             constraint_reference: value.ref_info.clone(),
-                            event_data: ConstraintEventData::EVALUATED {
+                            event_data: ConstraintEventData::Evaluated {
                                 target_identifier,
                                 result: res.0,
                                 reason: res.1.clone(),
@@ -247,9 +247,9 @@ pub fn evaluate_constraint_audit(
     })
 }
 
-fn fail(name: &String, reason: &str) -> (bool, Option<String>) {
+fn fail(name: &str, reason: &str) -> (bool, Option<String>) {
     CONSTRAINT_EVALUATIONS_ERROR
-        .with_label_values(&[name.as_str()])
+        .with_label_values(&[name])
         .inc();
     (false, Some(reason.to_string()))
 }

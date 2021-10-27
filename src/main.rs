@@ -22,18 +22,18 @@ struct MainArgs {
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand)]
 enum CommandEnum {
-    SERVER(server::Args),
-    INIT(helper::init::Args),
-    CLEANUP(helper::cleanup::Args),
-    AUDIT(audit::Args),
-    GENCRD(helper::gencrd::Args),
+    Server(server::Args),
+    Init(helper::init::Args),
+    Cleanup(helper::cleanup::Args),
+    Audit(audit::Args),
+    GenCRD(helper::gencrd::Args),
 }
 
 #[tokio::main]
 async fn main() {
     let args: MainArgs = argh::from_env();
     let log_level = match args.command {
-        CommandEnum::SERVER(_) => log::LevelFilter::Info,
+        CommandEnum::Server(_) => log::LevelFilter::Info,
         _ => log::LevelFilter::Error,
     };
     simple_logger::SimpleLogger::new()
@@ -43,10 +43,10 @@ async fn main() {
         .init()
         .unwrap();
     match args.command {
-        CommandEnum::SERVER(args) => server::run(args).await,
-        CommandEnum::INIT(args) => helper::init::run(args).await,
-        CommandEnum::CLEANUP(args) => helper::cleanup::run(args).await,
-        CommandEnum::AUDIT(args) => audit::run(args).await,
-        CommandEnum::GENCRD(args) => helper::gencrd::run(args),
+        CommandEnum::Server(args) => server::run(args).await,
+        CommandEnum::Init(args) => helper::init::run(args).await,
+        CommandEnum::Cleanup(args) => helper::cleanup::run(args).await,
+        CommandEnum::Audit(args) => audit::run(args).await,
+        CommandEnum::GenCRD(args) => helper::gencrd::run(args),
     }
 }

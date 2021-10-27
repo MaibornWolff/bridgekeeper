@@ -17,7 +17,7 @@ pub struct Args {
 
 pub async fn run(args: Args) {
     let client = Client::try_default().await.unwrap();
-    let namespace = std::env::var("NAMESPACE").unwrap_or("default".into());
+    let namespace = std::env::var("NAMESPACE").unwrap_or_else(|_| "default".into());
 
     // Delete webhook
     let webhook_api: kube::Api<MutatingWebhookConfiguration> = kube::Api::all(client.clone());

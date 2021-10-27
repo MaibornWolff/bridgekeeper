@@ -19,8 +19,8 @@ pub struct ConstraintEvent {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConstraintEventData {
-    LOADED,
-    EVALUATED {
+    Loaded,
+    Evaluated {
         target_identifier: String,
         result: bool,
         reason: Option<String>,
@@ -31,7 +31,7 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
     let (sender, mut receiver) = mpsc::unbounded_channel::<ConstraintEvent>();
     let events_api: Api<KubeEvent> = Api::namespaced(client.clone(), "default");
     task::spawn(async move {
-        let instance = std::env::var("POD_NAME").unwrap_or("dev".to_string());
+        let instance = std::env::var("POD_NAME").unwrap_or_else(|_| "dev".to_string());
         while let Some(event) = receiver.recv().await {
             let mut kube_event = KubeEvent::default();
             kube_event.metadata.generate_name = event.constraint_reference.name.clone();
@@ -43,11 +43,11 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
                 host: None,
             });
             match event.event_data {
-                ConstraintEventData::LOADED => {
+                ConstraintEventData::Loaded => {
                     kube_event.reason = Some("Loaded".to_string());
-                    kube_event.message = Some(format!("Constraint loaded by bridgekeeper"));
+                    kube_event.message = Some("Constraint loaded by bridgekeeper".to_string());
                 }
-                ConstraintEventData::EVALUATED {
+                ConstraintEventData::Evaluated {
                     target_identifier,
                     result,
                     reason,
@@ -57,7 +57,7 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
                         "Target: {}, Result: {}, Reason: {}",
                         target_identifier,
                         result,
-                        reason.unwrap_or("-".to_string())
+                        reason.unwrap_or_else(|| "-".to_string())
                     ));
                 }
             }
@@ -68,7 +68,7 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
                         .constraint_reference
                         .name
                         .clone()
-                        .unwrap_or("-".to_string()),
+                        .unwrap_or_else(|| "-".to_string()),
                     err
                 );
             }

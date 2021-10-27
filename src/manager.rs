@@ -8,7 +8,7 @@ use kube::{
     api::{Api, ListParams},
     Client,
 };
-use kube_runtime::{watcher, watcher::Event};
+use kube::runtime::{watcher, watcher::Event};
 use tokio::task;
 
 pub struct Manager {
@@ -40,7 +40,7 @@ impl Manager {
                 self.event_sender
                     .send(ConstraintEvent {
                         constraint_reference: ref_info,
-                        event_data: ConstraintEventData::LOADED,
+                        event_data: ConstraintEventData::Loaded,
                     })
                     .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
             }
@@ -65,7 +65,7 @@ impl Manager {
                                 event_sender
                                     .send(ConstraintEvent {
                                         constraint_reference: ref_info,
-                                        event_data: ConstraintEventData::LOADED,
+                                        event_data: ConstraintEventData::Loaded,
                                     })
                                     .unwrap_or_else(|err| {
                                         log::warn!("Could not send event: {:?}", err)

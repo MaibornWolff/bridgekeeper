@@ -1,9 +1,9 @@
 use crate::crd::Constraint;
 use crate::evaluator::ConstraintEvaluatorRef;
 use crate::util::cert::CertKeyPair;
-use kube::api::{
-    admission::{AdmissionResponse, AdmissionReview},
-    DynamicObject,
+use kube::{
+    api::DynamicObject,
+    core::admission::{AdmissionResponse, AdmissionReview},
 };
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec, Encoder, TextEncoder};
@@ -103,7 +103,7 @@ pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
         ..Config::default()
     };
 
-    rocket::custom(&config)
+    let _ = rocket::custom(&config)
         .manage(evaluator)
         .mount(
             "/",

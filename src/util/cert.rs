@@ -11,7 +11,7 @@ pub struct CertKeyPair {
 
 pub fn gen_cert(
     service_name: String,
-    namespace: &String,
+    namespace: &str,
     local_name: Option<String>,
 ) -> CertKeyPair {
     let mut params = rcgen::CertificateParams::default();
@@ -48,7 +48,7 @@ pub fn gen_cert(
 fn extract_hostname(local_name: String) -> rcgen::SanType {
     let is_ip = local_name.to_lowercase().starts_with("ip:");
     let local_name = local_name.to_lowercase().replace("ip:", "");
-    let mut local_name_split = local_name.split(":");
+    let mut local_name_split = local_name.split(':');
     let hostname = local_name_split.next().unwrap();
     if is_ip {
         rcgen::SanType::IpAddress(hostname.parse().unwrap())

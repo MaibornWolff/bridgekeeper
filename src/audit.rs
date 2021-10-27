@@ -130,7 +130,7 @@ impl Auditor {
                         let api = Api::<DynamicObject>::namespaced_with(
                             self.k8s_client.clone(),
                             namespace,
-                            &resource_description,
+                            resource_description,
                         );
                         let objects = api.list(&ListParams::default()).await.unwrap();
                         for object in objects {
@@ -147,7 +147,7 @@ impl Auditor {
                 }
             } else {
                 let api =
-                    Api::<DynamicObject>::all_with(self.k8s_client.clone(), &resource_description);
+                    Api::<DynamicObject>::all_with(self.k8s_client.clone(), resource_description);
                 let objects = api.list(&ListParams::default()).await.unwrap();
                 for object in objects {
                     let target_identifier = gen_target_identifier(resource_description, &object);
@@ -163,7 +163,7 @@ impl Auditor {
             for (object, message) in results.iter() {
                 let message = match message {
                     Some(reason) => format!(": {}", reason),
-                    None => format!(""),
+                    None => String::new(),
                 };
                 println!(
                     "{} violates constraint '{}'{}",
@@ -190,7 +190,7 @@ impl Auditor {
         for result in results {
             let violation = Violation {
                 identifier: result.0,
-                message: result.1.unwrap_or(String::from("N/A")),
+                message: result.1.unwrap_or_else(|| String::from("N/A")),
             };
             violations.push(violation);
         }
@@ -208,12 +208,12 @@ impl Auditor {
 
     async fn find_k8s_resource_matches(
         &self,
-        api_group: &String,
-        kind: &String,
+        api_group: &str,
+        kind: &str,
     ) -> Vec<(KubeApiResource, bool)> {
         let mut matched_resources = Vec::new();
         // core api group
-        if api_group == "" {
+        if api_group.is_empty() {
             let versions = self.k8s_client.list_core_api_versions().await.unwrap();
             let version = versions.versions.first().unwrap();
             let resources = self
@@ -223,7 +223,7 @@ impl Auditor {
                 .unwrap();
             for resource in resources.resources.iter() {
                 if (kind == "*" || resource.kind.to_lowercase() == kind.to_lowercase())
-                    && !resource.name.contains("/")
+                    && !resource.name.contains('/')
                 {
                     matched_resources.push((
                         gen_resource_description(None, resource),
@@ -251,7 +251,7 @@ impl Auditor {
                         .iter()
                     {
                         if (kind == "*" || resource.kind.to_lowercase() == kind.to_lowercase())
-                            && !resource.name.contains("/")
+                            && !resource.name.contains('/')
                         {
                             matched_resources.push((
                                 gen_resource_description(Some(group), resource),
@@ -290,7 +290,7 @@ fn gen_target_identifier(resource: &KubeApiResource, object: &DynamicObject) -> 
         "{}/{}/{}/{}",
         resource.group,
         resource.kind,
-        meta.namespace.clone().unwrap_or("-".to_string()),
+        meta.namespace.clone().unwrap_or_else(|| "-".to_string()),
         meta.name.clone().unwrap()
     )
 }
@@ -303,7 +303,7 @@ async fn namespaces(k8s_client: Client) -> Vec<String> {
         if !namespace
             .metadata
             .labels
-            .contains_key("bridgekeeper/ignore")
+            .as_ref().map_or(false, |map| map.contains_key("bridgekeeper/ignore"))
         {
             namespaces.push(namespace.metadata.name.clone().unwrap());
         }

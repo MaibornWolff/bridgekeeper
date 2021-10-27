@@ -1,6 +1,7 @@
 use crate::crd::{Constraint, ConstraintSpec};
 use k8s_openapi::api::core::v1::ObjectReference as KubeObjectReference;
 use kube::api::GroupVersionKind;
+use kube::core::Resource;
 use lazy_static::lazy_static;
 use prometheus::{register_gauge, Gauge};
 use std::collections::HashMap;
@@ -27,7 +28,7 @@ pub struct ConstraintInfo {
     pub ref_info: ConstraintObjectReference,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct ConstraintObjectReference {
     pub api_version: Option<String>,
     pub kind: Option<String>,
@@ -35,25 +36,9 @@ pub struct ConstraintObjectReference {
     pub uid: Option<String>,
 }
 
-impl Default for ConstraintObjectReference {
-    fn default() -> Self {
-        Self {
-            api_version: None,
-            kind: None,
-            name: None,
-            uid: None,
-        }
-    }
-}
-
 impl ConstraintObjectReference {
     pub fn to_object_reference(&self) -> KubeObjectReference {
-        let mut object_reference = KubeObjectReference::default();
-        object_reference.api_version = self.api_version.clone();
-        object_reference.kind = self.kind.clone();
-        object_reference.name = self.name.clone();
-        object_reference.uid = self.uid.clone();
-        object_reference
+        KubeObjectReference{api_version: self.api_version.clone(), kind: self.kind.clone(), name: self.name.clone(), uid: self.uid.clone(), ..Default::default()}
     }
 }
 
@@ -68,8 +53,8 @@ impl ConstraintStore {
 
 fn create_object_reference(obj: &Constraint) -> ConstraintObjectReference {
     ConstraintObjectReference {
-        api_version: Some(obj.api_version.clone()),
-        kind: Some(obj.kind.clone()),
+        api_version: Some(Constraint::api_version(&()).to_string()),
+        kind: Some(Constraint::kind(&()).to_string()),
         name: obj.metadata.name.clone(),
         uid: obj.metadata.uid.clone(),
     }
@@ -117,11 +102,11 @@ impl ConstraintInfo {
 
     pub fn is_namespace_match(&self, target_namespace: &String) -> bool {
         if let Some(namespaces) = &self.constraint.target.namespaces {
-            return namespaces.contains(target_namespace);
+            namespaces.contains(target_namespace)
         } else if let Some(excluded_namespaces) = &self.constraint.target.excluded_namespaces {
-            return !excluded_namespaces.contains(target_namespace);
+            !excluded_namespaces.contains(target_namespace)
         } else {
-            return true;
+            true
         }
     }
 }

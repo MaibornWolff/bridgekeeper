@@ -24,7 +24,7 @@ pub struct Args {
 pub async fn run(args: Args) {
     let client = kube::Client::try_default().await.unwrap();
     // Read certs
-    let cert_dir = args.cert_dir.unwrap_or(POD_CERTS_DIR.to_string());
+    let cert_dir = args.cert_dir.unwrap_or_else(|| POD_CERTS_DIR.to_string());
     let cert = crate::util::cert::wait_for_certs(cert_dir);
 
     // Initiate services
