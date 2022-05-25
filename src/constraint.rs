@@ -38,7 +38,13 @@ pub struct ConstraintObjectReference {
 
 impl ConstraintObjectReference {
     pub fn to_object_reference(&self) -> KubeObjectReference {
-        KubeObjectReference{api_version: self.api_version.clone(), kind: self.kind.clone(), name: self.name.clone(), uid: self.uid.clone(), ..Default::default()}
+        KubeObjectReference {
+            api_version: self.api_version.clone(),
+            kind: self.kind.clone(),
+            name: self.name.clone(),
+            uid: self.uid.clone(),
+            ..Default::default()
+        }
     }
 }
 

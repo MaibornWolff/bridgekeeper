@@ -107,4 +107,13 @@ impl ConstraintSpec {
             rule: Default::default(),
         }
     }
+
+    pub fn from_python(python: String) -> ConstraintSpec {
+        ConstraintSpec {
+            audit: Some(false),
+            enforce: Some(true),
+            target: Default::default(),
+            rule: Rule { python },
+        }
+    }
 }

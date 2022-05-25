@@ -195,6 +195,7 @@ dependencies = [
  "argh",
  "base64",
  "futures",
+ "json-patch",
  "k8s-openapi",
  "kube",
  "lazy_static",

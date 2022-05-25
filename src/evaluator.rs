@@ -3,7 +3,10 @@ use crate::{
     crd::Constraint,
     events::{ConstraintEvent, ConstraintEventData, EventSender},
 };
-use kube::core::{admission::AdmissionRequest, DynamicObject};
+use kube::core::{
+    admission::{self, Operation},
+    DynamicObject,
+};
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
@@ -43,21 +46,37 @@ lazy_static! {
     .unwrap();
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DummyOperation {
-    Audit,
+#[derive(Serialize)]
+pub struct ValidationRequest {
+    pub object: DynamicObject,
+    pub operation: Operation,
 }
 
-#[derive(Serialize)]
-pub struct AuditRequest {
-    pub object: DynamicObject,
-    pub operation: DummyOperation,
+impl ValidationRequest {
+    pub fn from(
+        admission_request: admission::AdmissionRequest<DynamicObject>,
+    ) -> Option<ValidationRequest> {
+        if let Some(object) = admission_request.object {
+            Some(ValidationRequest {
+                object,
+                operation: admission_request.operation,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 pub struct ConstraintEvaluator {
     constraints: ConstraintStoreRef,
     event_sender: EventSender,
+}
+
+pub struct EvaluationResult {
+    pub allowed: bool,
+    pub reason: Option<String>,
+    pub warnings: Vec<String>,
+    pub patch: Option<json_patch::Patch>,
 }
 
 pub type ConstraintEvaluatorRef = Arc<Mutex<ConstraintEvaluator>>;
@@ -77,14 +96,28 @@ impl ConstraintEvaluator {
 
     pub fn evaluate_constraints(
         &self,
-        request: &AdmissionRequest<DynamicObject>,
-    ) -> (bool, Option<String>, Vec<String>) {
+        admission_request: admission::AdmissionRequest<DynamicObject>,
+    ) -> EvaluationResult {
         let mut warnings = Vec::new();
-        let namespace = request.namespace.clone();
-        let gvk = &request.kind;
+        let namespace = admission_request.namespace.clone();
+        let name = admission_request.name.clone();
+        let gvk = admission_request.kind.clone();
+        let request = match ValidationRequest::from(admission_request) {
+            Some(request) => request,
+            None => {
+                return EvaluationResult {
+                    allowed: true,
+                    reason: Some("no object in request".to_string()),
+                    warnings: vec![],
+                    patch: None,
+                }
+            }
+        };
+
         if let Ok(constraints) = self.constraints.lock() {
+            let mut patches: Option<json_patch::Patch> = None;
             for value in constraints.constraints.values() {
-                if value.is_match(gvk, &namespace) {
+                if value.is_match(&gvk, &namespace) {
                     MATCHED_CONSTRAINTS
                         .with_label_values(&[value.name.as_str()])
                         .inc();
@@ -93,7 +126,7 @@ impl ConstraintEvaluator {
                         gvk.kind,
                         gvk.group,
                         namespace.clone().unwrap_or_else(|| "-".to_string()),
-                        request.name,
+                        name,
                         value.name
                     );
                     let target_identifier = format!(
@@ -101,9 +134,16 @@ impl ConstraintEvaluator {
                         gvk.group,
                         gvk.kind,
                         namespace.clone().unwrap_or_else(|| "-".to_string()),
-                        request.name
+                        name
                     );
-                    let res = evaluate_constraint(value, request);
+                    let res = evaluate_constraint(value, &request);
+                    if let Some(mut patch) = res.2 {
+                        if let Some(patches) = patches.as_mut() {
+                            patches.0.append(&mut patch.0);
+                        } else {
+                            patches = Some(patch);
+                        }
+                    }
                     self.event_sender
                         .send(ConstraintEvent {
                             constraint_reference: value.ref_info.clone(),
@@ -134,14 +174,24 @@ impl ConstraintEvaluator {
                         );
                         if value.constraint.enforce.unwrap_or(true) {
                             // If one constraint fails no need to evaluate the others
-                            return (res.0, res.1, warnings);
+                            return EvaluationResult {
+                                allowed: res.0,
+                                reason: res.1,
+                                warnings,
+                                patch: None,
+                            };
                         } else {
                             warnings.push(res.1.unwrap());
                         }
                     }
                 }
             }
-            (true, None, warnings)
+            EvaluationResult {
+                allowed: true,
+                reason: None,
+                warnings,
+                patch: patches,
+            }
         } else {
             panic!("Could not lock constraints mutex");
         }
@@ -149,7 +199,7 @@ impl ConstraintEvaluator {
 
     pub fn validate_constraint(
         &self,
-        request: &AdmissionRequest<Constraint>,
+        request: &admission::AdmissionRequest<Constraint>,
     ) -> (bool, Option<String>) {
         if let Some(constraint) = request.object.as_ref() {
             let python_code = constraint.spec.rule.python.clone();
@@ -171,8 +221,8 @@ impl ConstraintEvaluator {
 
 fn evaluate_constraint(
     constraint: &ConstraintInfo,
-    request: &AdmissionRequest<DynamicObject>,
-) -> (bool, Option<String>) {
+    request: &ValidationRequest,
+) -> (bool, Option<String>, Option<json_patch::Patch>) {
     let name = &constraint.name;
     Python::with_gil(|py| {
         let obj = pythonize::pythonize(py, &request).unwrap();
@@ -183,19 +233,9 @@ fn evaluate_constraint(
             "bridgekeeper",
         ) {
             if let Ok(validation_function) = rule_code.getattr("validate") {
-                if let Ok(result) = validation_function.call1((obj,)) {
-                    let extracted_result: Result<(bool, String), PyErr> = result.extract();
-                    match extracted_result {
-                        Ok(result) => (result.0, Some(result.1)),
-                        Err(_) => match result.extract() {
-                            Ok(result) => (result, None),
-                            Err(_) => {
-                                fail(name, "Validation function did not return expected types")
-                            }
-                        },
-                    }
-                } else {
-                    fail(name, "Validation function failed")
+                match validation_function.call1((obj,)) {
+                    Ok(result) => extract_result(name, request, result),
+                    Err(err) => fail(name, &format!("Validation function failed: {}", err)),
                 }
             } else {
                 fail(name, "Validation function not found in code")
@@ -209,47 +249,186 @@ fn evaluate_constraint(
 pub fn evaluate_constraint_audit(
     constraint: &ConstraintInfo,
     object: DynamicObject,
-) -> (bool, Option<String>) {
-    let name = &constraint.name;
-    let request = AuditRequest {
+) -> (bool, Option<String>, Option<json_patch::Patch>) {
+    let request = ValidationRequest {
         object,
-        operation: DummyOperation::Audit,
+        operation: Operation::Update,
     };
-    Python::with_gil(|py| {
-        let obj = pythonize::pythonize(py, &request).unwrap();
-        if let Ok(rule_code) = PyModule::from_code(
-            py,
-            &constraint.constraint.rule.python,
-            "rule.py",
-            "bridgekeeper",
-        ) {
-            if let Ok(validation_function) = rule_code.getattr("validate") {
-                if let Ok(result) = validation_function.call1((obj,)) {
-                    let extracted_result: Result<(bool, String), PyErr> = result.extract();
-                    match extracted_result {
-                        Ok(result) => (result.0, Some(result.1)),
-                        Err(_) => match result.extract() {
-                            Ok(result) => (result, None),
-                            Err(_) => {
-                                fail(name, "Validation function did not return expected types")
-                            }
-                        },
-                    }
-                } else {
-                    fail(name, "Validation function failed")
-                }
-            } else {
-                fail(name, "Validation function not found in code")
-            }
-        } else {
-            fail(name, "Validation function could not be compiled")
-        }
-    })
+    evaluate_constraint(constraint, &request)
 }
 
-fn fail(name: &str, reason: &str) -> (bool, Option<String>) {
+fn extract_result(
+    name: &String,
+    request: &ValidationRequest,
+    result: &PyAny,
+) -> (bool, Option<String>, Option<json_patch::Patch>) {
+    if let Ok((code, reason, patched)) = result.extract::<(bool, Option<String>, &PyAny)>() {
+        if let Ok(result) = pythonize::depythonize::<serde_json::Value>(patched) {
+            match generate_patches(&request.object, &result) {
+                Ok(patch) => (code, reason, Some(patch)),
+                Err(error) => fail(name, &format!("failed to compute patch: {}", error)),
+            }
+        } else {
+            fail(
+                name,
+                "Could not read patched object returned by validation function",
+            )
+        }
+    } else if let Ok((code, reason)) = result.extract::<(bool, Option<String>)>() {
+        (code, reason, None)
+    } else if let Ok(code) = result.extract::<bool>() {
+        (code, None, None)
+    } else {
+        fail(name, "Validation function did not return expected types")
+    }
+}
+
+fn fail(name: &str, reason: &str) -> (bool, Option<String>, Option<json_patch::Patch>) {
     CONSTRAINT_EVALUATIONS_ERROR
         .with_label_values(&[name])
         .inc();
-    (false, Some(reason.to_string()))
+    (false, Some(reason.to_string()), None)
+}
+
+fn generate_patches(
+    input: &DynamicObject,
+    patched: &serde_json::Value,
+) -> Result<json_patch::Patch, String> {
+    let input = match serde_json::to_value(input) {
+        Ok(input) => input,
+        Err(error) => return Err(error.to_string()),
+    };
+    Ok(json_patch::diff(&input, patched))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crd::ConstraintSpec;
+    use kube::core::ObjectMeta;
+
+    #[test]
+    fn test_simple_evaluate() {
+        pyo3::prepare_freethreaded_python();
+        let python = r#"
+def validate(request):
+    return True
+        "#;
+        let constraint_spec = ConstraintSpec::from_python(python.to_string());
+        let constraint =
+            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+
+        let object = DynamicObject {
+            types: None,
+            metadata: ObjectMeta::default(),
+            data: serde_json::Value::Null,
+        };
+        let request = ValidationRequest {
+            object,
+            operation: Operation::Create,
+        };
+
+        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        assert!(res, "validate function failed: {}", reason.unwrap());
+        assert!(reason.is_none());
+        assert!(patch.is_none());
+    }
+
+    #[test]
+    fn test_simple_evaluate_with_reason() {
+        pyo3::prepare_freethreaded_python();
+        let python = r#"
+def validate(request):
+    return False, "foobar"
+        "#;
+        let constraint_spec = ConstraintSpec::from_python(python.to_string());
+        let constraint =
+            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+
+        let object = DynamicObject {
+            types: None,
+            metadata: ObjectMeta::default(),
+            data: serde_json::Value::Null,
+        };
+        let request = ValidationRequest {
+            object,
+            operation: Operation::Create,
+        };
+
+        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        assert!(!res);
+        assert!(reason.is_some());
+        assert_eq!("foobar".to_string(), reason.unwrap());
+        assert!(patch.is_none());
+    }
+
+    #[test]
+    fn test_evaluate_with_invalid_python() {
+        pyo3::prepare_freethreaded_python();
+        let python = r#"
+def validate(request):
+    return false, "foobar"
+        "#;
+        let constraint_spec = ConstraintSpec::from_python(python.to_string());
+        let constraint =
+            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+
+        let object = DynamicObject {
+            types: None,
+            metadata: ObjectMeta::default(),
+            data: serde_json::Value::Null,
+        };
+        let request = ValidationRequest {
+            object,
+            operation: Operation::Create,
+        };
+
+        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        assert!(!res);
+        assert!(reason.is_some());
+        assert_eq!(
+            "Validation function failed: NameError: name 'false' is not defined".to_string(),
+            reason.unwrap()
+        );
+        assert!(patch.is_none());
+    }
+
+    #[test]
+    fn test_simple_mutate() {
+        pyo3::prepare_freethreaded_python();
+        let python = r#"
+def validate(request):
+    object = request["object"]
+    object["b"] = "2"
+    return True, None, object
+        "#;
+        let constraint_spec = ConstraintSpec::from_python(python.to_string());
+        let constraint =
+            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+
+        let data = serde_json::from_str(r#"{"a": 1, "b": "1"}"#).unwrap();
+        let object = DynamicObject {
+            types: None,
+            metadata: ObjectMeta::default(),
+            data,
+        };
+        let request = ValidationRequest {
+            object,
+            operation: Operation::Create,
+        };
+
+        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        assert!(res, "validate function failed: {}", reason.unwrap());
+        assert!(reason.is_none());
+        assert!(patch.is_some());
+        let patch = patch.unwrap();
+        assert_eq!(1, patch.0.len());
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                r#"[{"op": "replace", "path": "/b", "value": "2"}]"#
+            )
+            .unwrap(),
+            serde_json::to_value(patch.0).unwrap()
+        );
+    }
 }

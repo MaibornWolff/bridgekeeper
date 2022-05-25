@@ -1,0 +1,19 @@
+apiVersion: bridgekeeper.maibornwolff.de/v1alpha1
+kind: Constraint
+metadata:
+  name: deployment-add-label
+spec:
+  target:
+    matches:
+      - apiGroup: apps
+        kind: "Deployment"
+  rule:
+    python: |
+      def validate(request):
+        obj = request["object"]
+        metadata = obj["metadata"]
+        labels = metadata.get("labels", dict())
+        labels["foobar"] = "I-love-bridgekeeper"
+        metadata["labels"] = labels
+        return True, None, obj
+

@@ -61,7 +61,17 @@ The constraint spec has the following fields:
 * `target.matches`: A list of one or more match parameters consisting of `apiGroup` and `kind`. Wildcards can be used as `"*"`, if the resource has no API group (e.g. namespaces) use an empty string `""`.
 * `target.namespaces`: An optional list of strings, if specified only resources from one of these namespaces are matched, only this or `target.excludedNamespaces` can be specified, not both
 * `target.excludedNamespaces`: An optional list of strings, if specified resources from one of these namespaces are not matched, only this or `target.namespaces` can be specified, not both
-* `rule.python`: An inline python script. It must have a function called `validate` that gets exactly one parameter that contains the [AdmissionRequest](https://github.com/kubernetes/api/blob/master/admission/v1/types.go#L40)) as a python structure as a `json.loads` would produce it. The function must return either a boolean or a tuple of boolean and string. The boolean represents the result (true means resource is accepted, false means rejected) and the string is an optional reason for the rejection that will be sent to the caller.
+* `rule.python`: An inline python script representing the rule code.
+
+The rule script must have a function called `validate` that gets exactly one parameter that contains the [AdmissionRequest](https://github.com/kubernetes/api/blob/master/admission/v1/types.go#L40)) as a python structure as `json.loads` would produce it. The function must return one of the following:
+
+* A single boolean that represents the result (true means resource is accepted, false means rejected)
+* A tuple of boolean and string: The string is an optional reason for the rejection that will be sent to the caller
+* A tuple of boolean, string and object: The object is the mutated version of the input object (`request["object"]`).
+
+If the python code is not valid, raises an exception or the return value does not match any of the above it will be treated as a rejection.
+
+If the code returns a mutated object bridekeeper will calculate the diff between the input and output objects and return it with the admission response so that Kubernetes can apply the patch to the object.
 
 You can use the entire python feature set and standard library in your script (so stuff like `import re` is possible). Using threads, accessing the filesystem or using the network (e.g. via sockets) should not be done and might be prohibited in the future.
 
@@ -72,6 +82,14 @@ You can find a more useful example under [example/constraint.yaml](example/const
 3. `kubectl apply -f example/deployment-ok.yaml` will be accepted because the docker image tag uses a specific version
 
 Constraints are not namespaced and apply to the entire cluster unless `target.namespaces` or `target.excludedNamespaces` are used to filter namespaces. To completely exclude a namespace from bridgekeeper label it with `bridgekeeper/ignore`. If you use the helm chart to install bridgekeeper you can set the option `bridgekeeper.ignoreNamespaces` to a list of namespaces that should be labled and it will be done during initial install (by default it will label the `kube-*` namespaces).
+
+### Mutations
+
+Aside from deciding if an object is allowed or should be rejected policies can also modify (called mutate in Kubernetes speak) the object prior to it being applied in kubernetes. Common examples are automatically adding proxy information to pods or adding labels to deployments to help with cost distribution.
+
+Mutations are implemented very lightweight in bridgekeeper. Instead of generating patches a rule can simply modify the object (which is just a nested python structure) and return that object along with the admission decision. Bridgekeeper will take care to generate the JSON patches that are needed for Kubernetes.
+
+To mutate the object the validate function must return a tuple of boolean, string, object/dict. If the object is rejected the mutations are ignored. If you do not want to return a reason just return `None`.
 
 ### Auditing
 
@@ -84,6 +102,8 @@ To include a constraint in the audit run set the `spec.audit` field to `yes`. Th
 A single audit run can also be launched locally: `bridgekeeper audit`. This will connect to the kubernetes cluster defined by the currently active kubernetes context (as kubectl would use it), read in all existing constraints and perform an audit run. All objects that violate a constraint are printed on the console as output, this can be disabled by providing `--silent`. By adding the `--status` flag the constraint status will also be updated with the violations.
 
 Note: Currently the audit feature only works correctly if you launch bridgekeeper as a single instance (in helm `replicaCount: 1`).
+
+Any mutations returned by the rules are ignored in audit mode.
 
 ## Developer Guide
 

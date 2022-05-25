@@ -4,11 +4,11 @@ use crate::{
     events::{ConstraintEvent, ConstraintEventData, EventSender},
 };
 use futures::StreamExt;
+use kube::runtime::{watcher, watcher::Event};
 use kube::{
     api::{Api, ListParams},
     Client,
 };
-use kube::runtime::{watcher, watcher::Event};
 use tokio::task;
 
 pub struct Manager {

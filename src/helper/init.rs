@@ -49,7 +49,11 @@ pub async fn run(args: Args) {
         key_file.write_all(cert.key.as_bytes()).unwrap();
     } else {
         let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
-        let metadata = ObjectMeta{name: Some(SECRET_NAME.to_string()), namespace: Some(namespace.clone()), ..Default::default()};
+        let metadata = ObjectMeta {
+            name: Some(SECRET_NAME.to_string()),
+            namespace: Some(namespace.clone()),
+            ..Default::default()
+        };
         let mut data: BTreeMap<String, ByteString> = std::collections::BTreeMap::new();
         data.insert(
             CACERT_FILENAME.to_string(),

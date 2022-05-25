@@ -137,7 +137,7 @@ impl Auditor {
                             num_objects += 1;
                             let target_identifier =
                                 gen_target_identifier(resource_description, &object);
-                            let (result, message) =
+                            let (result, message, _patch) =
                                 crate::evaluator::evaluate_constraint_audit(constraint, object);
                             if !result {
                                 results.push((target_identifier, message));
@@ -151,7 +151,7 @@ impl Auditor {
                 let objects = api.list(&ListParams::default()).await.unwrap();
                 for object in objects {
                     let target_identifier = gen_target_identifier(resource_description, &object);
-                    let (result, message) =
+                    let (result, message, _patch) =
                         crate::evaluator::evaluate_constraint_audit(constraint, object);
                     if !result {
                         results.push((target_identifier, message));
@@ -303,7 +303,8 @@ async fn namespaces(k8s_client: Client) -> Vec<String> {
         if !namespace
             .metadata
             .labels
-            .as_ref().map_or(false, |map| map.contains_key("bridgekeeper/ignore"))
+            .as_ref()
+            .map_or(false, |map| map.contains_key("bridgekeeper/ignore"))
         {
             namespaces.push(namespace.metadata.name.clone().unwrap());
         }

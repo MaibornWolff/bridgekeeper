@@ -1,5 +1,5 @@
 use crate::crd::Constraint;
-use crate::evaluator::ConstraintEvaluatorRef;
+use crate::evaluator::{ConstraintEvaluatorRef, EvaluationResult};
 use crate::util::cert::CertKeyPair;
 use kube::{
     api::DynamicObject,
@@ -38,10 +38,18 @@ async fn admission_mutate(
 
     let evaluator = evaluator.lock().unwrap();
 
-    let (allowed, reason, warnings) = evaluator.evaluate_constraints(&admission_request);
+    let EvaluationResult {
+        allowed,
+        reason,
+        warnings,
+        patch,
+    } = evaluator.evaluate_constraints(admission_request);
     response.allowed = allowed;
     if !warnings.is_empty() {
         response.warnings = Some(warnings);
+    }
+    if let Some(patch) = patch {
+        response = response.with_patch(patch).unwrap();
     }
     if !allowed {
         response.result.message = reason;

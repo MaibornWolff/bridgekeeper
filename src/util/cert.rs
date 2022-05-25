@@ -9,11 +9,7 @@ pub struct CertKeyPair {
     pub key: String,
 }
 
-pub fn gen_cert(
-    service_name: String,
-    namespace: &str,
-    local_name: Option<String>,
-) -> CertKeyPair {
+pub fn gen_cert(service_name: String, namespace: &str, local_name: Option<String>) -> CertKeyPair {
     let mut params = rcgen::CertificateParams::default();
     params
         .subject_alt_names
