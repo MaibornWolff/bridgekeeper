@@ -35,7 +35,9 @@ pub struct Args {
 struct Assets;
 
 pub async fn run(args: Args) {
-    let client = Client::try_default().await.unwrap();
+    let client = Client::try_default()
+        .await
+        .expect("failed to create kube client");
     let namespace = std::env::var("NAMESPACE").unwrap_or_else(|_| "default".into());
 
     // Create and store certificate
@@ -43,10 +45,16 @@ pub async fn run(args: Args) {
         crate::util::cert::gen_cert(SERVICE_NAME.to_string(), &namespace, args.local.clone());
     if args.local.is_some() {
         let _ = create_dir(LOCAL_CERTS_DIR);
-        let mut cert_file = File::create(Path::new(LOCAL_CERTS_DIR).join(CERT_FILENAME)).unwrap();
-        cert_file.write_all(cert.cert.as_bytes()).unwrap();
-        let mut key_file = File::create(Path::new(LOCAL_CERTS_DIR).join(KEY_FILENAME)).unwrap();
-        key_file.write_all(cert.key.as_bytes()).unwrap();
+        let mut cert_file = File::create(Path::new(LOCAL_CERTS_DIR).join(CERT_FILENAME))
+            .expect("failed to create cert file");
+        cert_file
+            .write_all(cert.cert.as_bytes())
+            .expect("failed to write cert");
+        let mut key_file = File::create(Path::new(LOCAL_CERTS_DIR).join(KEY_FILENAME))
+            .expect("failed to create key file");
+        key_file
+            .write_all(cert.key.as_bytes())
+            .expect("failed to write key");
     } else {
         let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
         let metadata = ObjectMeta {
@@ -78,12 +86,12 @@ pub async fn run(args: Args) {
             secret_api
                 .delete(SECRET_NAME, &Default::default())
                 .await
-                .unwrap();
+                .expect("failed to delete existing certificate secret");
         }
         secret_api
             .create(&Default::default(), &secret)
             .await
-            .unwrap();
+            .expect("failed to create certificate secret");
     }
 
     // Create webhook
@@ -92,8 +100,9 @@ pub async fn run(args: Args) {
     } else {
         Assets::get("admission-controller.yaml")
     }
-    .unwrap();
-    let webhook_data = String::from_utf8(webhook_data.data.to_vec()).unwrap();
+    .expect("failed to read admission controller template");
+    let webhook_data = String::from_utf8(webhook_data.data.to_vec())
+        .expect("failed to parse admission controller template");
     apply_webhook::<MutatingWebhookConfiguration>(
         &client,
         webhook_data,
@@ -108,8 +117,9 @@ pub async fn run(args: Args) {
     } else {
         Assets::get("constraint-validation-controller.yaml")
     }
-    .unwrap();
-    let webhook_data = String::from_utf8(webhook_data.data.to_vec()).unwrap();
+    .expect("failed to read contraint admission controller template");
+    let webhook_data = String::from_utf8(webhook_data.data.to_vec())
+        .expect("failed to parse constraint admission controller template");
     apply_webhook::<ValidatingWebhookConfiguration>(
         &client,
         webhook_data,
@@ -134,7 +144,7 @@ pub async fn run(args: Args) {
             namespace_api
                 .patch(&namespace, &patch_params, &patch)
                 .await
-                .unwrap();
+                .expect("failed to patch namespace labels");
         }
     }
 }
@@ -159,7 +169,7 @@ async fn apply_webhook<T: Resource>(
         webhook_data =
             webhook_data.replace("<host>", &local_name.to_lowercase().replace("ip:", ""));
     }
-    let webhook_data = serde_yaml::from_str(&webhook_data).unwrap();
+    let webhook_data = serde_yaml::from_str(&webhook_data).expect("failed to read webhook data");
 
     let webhook_api: kube::Api<T> = kube::Api::all(client.clone());
     if let Ok(_res) = webhook_api.get(WEBHOOK_NAME).await {

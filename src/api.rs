@@ -8,6 +8,7 @@ use kube::{
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec, Encoder, TextEncoder};
 use rocket::http::ContentType;
+use rocket::response::Responder;
 use rocket::{config::TlsConfig, serde::json::Json, Config, State};
 use std::convert::TryInto;
 
@@ -17,7 +18,15 @@ lazy_static! {
         "Number of HTTP requests made.",
         &["path"]
     )
-    .unwrap();
+    .expect("creating metric always works");
+}
+
+#[derive(Responder)]
+enum ApiError {
+    #[response(status = 400)]
+    InvalidRequest(String),
+    #[response(status = 500)]
+    ProcessingFailure(String),
 }
 
 #[rocket::get("/health")]
@@ -30,13 +39,15 @@ async fn health() -> &'static str {
 async fn admission_mutate(
     data: Json<AdmissionReview<DynamicObject>>,
     evaluator: &State<ConstraintEvaluatorRef>,
-) -> Json<AdmissionReview<DynamicObject>> {
+) -> Result<Json<AdmissionReview<DynamicObject>>, ApiError> {
     HTTP_REQUEST_COUNTER.with_label_values(&["/mutate"]).inc();
     let admission_review = data.0;
-    let admission_request = admission_review.try_into().unwrap();
+    let admission_request = admission_review.try_into().map_err(|err| {
+        ApiError::InvalidRequest(format!("Failed to parse admissionrequest: {}", err))
+    })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let evaluator = evaluator.lock().unwrap();
+    let evaluator = evaluator.lock().expect("lock failed. Cannot continue");
 
     let EvaluationResult {
         allowed,
@@ -49,7 +60,12 @@ async fn admission_mutate(
         response.warnings = Some(warnings);
     }
     if let Some(patch) = patch {
-        response = response.with_patch(patch).unwrap();
+        response = response.with_patch(patch).map_err(|err| {
+            ApiError::ProcessingFailure(format!(
+                "Failed to serialize patch from validation function: {}",
+                err
+            ))
+        })?;
     }
     if !allowed {
         response.result.message = reason;
@@ -57,22 +73,24 @@ async fn admission_mutate(
     }
 
     let review = response.into_review();
-    Json(review)
+    Ok(Json(review))
 }
 
 #[rocket::post("/validate_constraint", data = "<data>")]
 async fn validate_constraint(
     data: Json<AdmissionReview<Constraint>>,
     evaluator: &State<ConstraintEvaluatorRef>,
-) -> Json<AdmissionReview<DynamicObject>> {
+) -> Result<Json<AdmissionReview<DynamicObject>>, ApiError> {
     HTTP_REQUEST_COUNTER
         .with_label_values(&["/validate_constraint"])
         .inc();
     let admission_review = data.0;
-    let admission_request = admission_review.try_into().unwrap();
+    let admission_request = admission_review.try_into().map_err(|err| {
+        ApiError::InvalidRequest(format!("Failed to parse admissionrequest: {}", err))
+    })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let evaluator = evaluator.lock().unwrap();
+    let evaluator = evaluator.lock().expect("lock failed. Cannot continue");
 
     let (allowed, reason) = evaluator.validate_constraint(&admission_request);
     response.allowed = allowed;
@@ -82,21 +100,31 @@ async fn validate_constraint(
     }
 
     let review = response.into_review();
-    Json(review)
+    Ok(Json(review))
 }
 
 #[rocket::get("/metrics")]
-async fn metrics() -> (ContentType, String) {
+async fn metrics() -> Result<(ContentType, String), ApiError> {
     HTTP_REQUEST_COUNTER.with_label_values(&["/metrics"]).inc();
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
     let mut buffer = vec![];
-    encoder.encode(&metric_families, &mut buffer).unwrap();
-    let body = String::from_utf8(buffer).unwrap();
-    (
-        ContentType::parse_flexible(encoder.format_type()).unwrap(),
+    encoder
+        .encode(&metric_families, &mut buffer)
+        .map_err(|err| ApiError::InvalidRequest(format!("Failed to encode metrics: {}", err)))?;
+    let body = String::from_utf8(buffer)
+        .map_err(|err| ApiError::InvalidRequest(format!("Failed to encode metrics: {}", err)))?;
+    Ok((
+        match ContentType::parse_flexible(encoder.format_type()) {
+            Some(content_type) => content_type,
+            None => {
+                return Err(ApiError::ProcessingFailure(
+                    "Failed to parse content type".to_string(),
+                ))
+            }
+        },
         body,
-    )
+    ))
 }
 
 pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
@@ -119,5 +147,5 @@ pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
         )
         .launch()
         .await
-        .unwrap();
+        .expect("failed to launch rocket server");
 }

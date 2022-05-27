@@ -12,7 +12,7 @@ lazy_static! {
         "bridgekeeper_constraints_active",
         "Number of active constraints."
     )
-    .unwrap();
+    .expect("creating metric always works");
 }
 
 pub struct ConstraintStore {
@@ -120,7 +120,7 @@ impl ConstraintInfo {
 impl ConstraintStore {
     pub fn add_constraint(&mut self, constraint: Constraint) -> Option<ConstraintObjectReference> {
         let ref_info = create_object_reference(&constraint);
-        let name = constraint.metadata.name.unwrap();
+        let name = constraint.metadata.name.expect("name is always set");
         if let Some(existing_constraint_info) = self.constraints.get(&name) {
             if existing_constraint_info.constraint != constraint.spec {
                 let constraint_info =
@@ -142,7 +142,7 @@ impl ConstraintStore {
     }
 
     pub fn remove_constraint(&mut self, constraint: Constraint) {
-        let name = constraint.metadata.name.unwrap();
+        let name = constraint.metadata.name.expect("name is always set");
         log::info!("Constraint '{}' removed", name);
         self.constraints.remove(&name);
         ACTIVE_CONSTRAINTS.dec();

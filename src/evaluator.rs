@@ -19,31 +19,31 @@ lazy_static! {
         "Number of admissions matched to a constraint.",
         &["name"]
     )
-    .unwrap();
+    .expect("creating metric always works");
     static ref CONSTRAINT_EVALUATIONS_SUCCESS: CounterVec = register_counter_vec!(
         "bridgekeeper_constraint_evaluated_success",
         "Number of successfull constraint evaluations",
         &["name"]
     )
-    .unwrap();
+    .expect("creating metric always works");
     static ref CONSTRAINT_EVALUATIONS_REJECT: CounterVec = register_counter_vec!(
         "bridgekeeper_constraint_evaluated_reject",
         "Number of failed constraint evaluations.",
         &["name"]
     )
-    .unwrap();
+    .expect("creating metric always works");
     static ref CONSTRAINT_EVALUATIONS_ERROR: CounterVec = register_counter_vec!(
         "bridgekeeper_constraint_evaluated_error",
         "Number of constraint evaluations that had an error.",
         &["name"]
     )
-    .unwrap();
+    .expect("creating metric always works");
     static ref CONSTRAINT_VALIDATIONS_FAIL: CounterVec = register_counter_vec!(
         "bridgekeeper_constraint_validation_fail",
         "Number of constraint validations that failed.",
         &["name"]
     )
-    .unwrap();
+    .expect("creating metric always works");
 }
 
 #[derive(Serialize)]
@@ -113,87 +113,87 @@ impl ConstraintEvaluator {
                 }
             }
         };
-
-        if let Ok(constraints) = self.constraints.lock() {
-            let mut patches: Option<json_patch::Patch> = None;
-            for value in constraints.constraints.values() {
-                if value.is_match(&gvk, &namespace) {
-                    MATCHED_CONSTRAINTS
+        let constraints = self
+            .constraints
+            .lock()
+            .expect("lock failed. Cannot continue");
+        let mut patches: Option<json_patch::Patch> = None;
+        for value in constraints.constraints.values() {
+            if value.is_match(&gvk, &namespace) {
+                MATCHED_CONSTRAINTS
+                    .with_label_values(&[value.name.as_str()])
+                    .inc();
+                log::info!(
+                    "Object {}.{}/{}/{} matches constraint {}",
+                    gvk.kind,
+                    gvk.group,
+                    namespace.clone().unwrap_or_else(|| "-".to_string()),
+                    name,
+                    value.name
+                );
+                let target_identifier = format!(
+                    "{}/{}/{}/{}",
+                    gvk.group,
+                    gvk.kind,
+                    namespace.clone().unwrap_or_else(|| "-".to_string()),
+                    name
+                );
+                let res = evaluate_constraint(value, &request);
+                if let Some(mut patch) = res.2 {
+                    if let Some(patches) = patches.as_mut() {
+                        patches.0.append(&mut patch.0);
+                    } else {
+                        patches = Some(patch);
+                    }
+                }
+                self.event_sender
+                    .send(ConstraintEvent {
+                        constraint_reference: value.ref_info.clone(),
+                        event_data: ConstraintEventData::Evaluated {
+                            target_identifier,
+                            result: res.0,
+                            reason: res.1.clone(),
+                        },
+                    })
+                    .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
+                if res.0 {
+                    CONSTRAINT_EVALUATIONS_SUCCESS
                         .with_label_values(&[value.name.as_str()])
                         .inc();
-                    log::info!(
-                        "Object {}.{}/{}/{} matches constraint {}",
-                        gvk.kind,
-                        gvk.group,
-                        namespace.clone().unwrap_or_else(|| "-".to_string()),
-                        name,
-                        value.name
-                    );
-                    let target_identifier = format!(
-                        "{}/{}/{}/{}",
-                        gvk.group,
-                        gvk.kind,
-                        namespace.clone().unwrap_or_else(|| "-".to_string()),
-                        name
-                    );
-                    let res = evaluate_constraint(value, &request);
-                    if let Some(mut patch) = res.2 {
-                        if let Some(patches) = patches.as_mut() {
-                            patches.0.append(&mut patch.0);
-                        } else {
-                            patches = Some(patch);
-                        }
+                    log::info!("Constraint '{}' evaluates to {}", value.name, res.0);
+                    if let Some(warning) = res.1 {
+                        warnings.push(warning);
                     }
-                    self.event_sender
-                        .send(ConstraintEvent {
-                            constraint_reference: value.ref_info.clone(),
-                            event_data: ConstraintEventData::Evaluated {
-                                target_identifier,
-                                result: res.0,
-                                reason: res.1.clone(),
-                            },
-                        })
-                        .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
-                    if res.0 {
-                        CONSTRAINT_EVALUATIONS_SUCCESS
-                            .with_label_values(&[value.name.as_str()])
-                            .inc();
-                        log::info!("Constraint '{}' evaluates to {}", value.name, res.0);
-                        if res.1.is_some() {
-                            warnings.push(res.1.unwrap());
-                        }
+                } else {
+                    CONSTRAINT_EVALUATIONS_REJECT
+                        .with_label_values(&[value.name.as_str()])
+                        .inc();
+                    let reason = res.1.unwrap_or_else(|| "-".to_string());
+                    log::info!(
+                        "Constraint '{}' evaluates to {} with message '{}'",
+                        value.name,
+                        res.0,
+                        reason,
+                    );
+                    if value.constraint.enforce.unwrap_or(true) {
+                        // If one constraint fails no need to evaluate the others
+                        return EvaluationResult {
+                            allowed: res.0,
+                            reason: Some(reason),
+                            warnings,
+                            patch: None,
+                        };
                     } else {
-                        CONSTRAINT_EVALUATIONS_REJECT
-                            .with_label_values(&[value.name.as_str()])
-                            .inc();
-                        log::info!(
-                            "Constraint '{}' evaluates to {} with message '{}'",
-                            value.name,
-                            res.0,
-                            res.1.as_ref().unwrap()
-                        );
-                        if value.constraint.enforce.unwrap_or(true) {
-                            // If one constraint fails no need to evaluate the others
-                            return EvaluationResult {
-                                allowed: res.0,
-                                reason: res.1,
-                                warnings,
-                                patch: None,
-                            };
-                        } else {
-                            warnings.push(res.1.unwrap());
-                        }
+                        warnings.push(reason);
                     }
                 }
             }
-            EvaluationResult {
-                allowed: true,
-                reason: None,
-                warnings,
-                patch: patches,
-            }
-        } else {
-            panic!("Could not lock constraints mutex");
+        }
+        EvaluationResult {
+            allowed: true,
+            reason: None,
+            warnings,
+            patch: patches,
         }
     }
 
@@ -205,9 +205,11 @@ impl ConstraintEvaluator {
             let python_code = constraint.spec.rule.python.clone();
             Python::with_gil(|py| {
                 if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
-                    CONSTRAINT_VALIDATIONS_FAIL
-                        .with_label_values(&[constraint.metadata.name.as_ref().unwrap().as_str()])
-                        .inc();
+                    let name = match constraint.metadata.name.as_ref() {
+                        Some(name) => name.as_str(),
+                        None => "-invalidname-",
+                    };
+                    CONSTRAINT_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
                     (false, Some(format!("Python compile error: {:?}", err)))
                 } else {
                     (true, None)
@@ -225,7 +227,10 @@ fn evaluate_constraint(
 ) -> (bool, Option<String>, Option<json_patch::Patch>) {
     let name = &constraint.name;
     Python::with_gil(|py| {
-        let obj = pythonize::pythonize(py, &request).unwrap();
+        let obj = match pythonize::pythonize(py, &request) {
+            Ok(obj) => obj,
+            Err(err) => return fail(name, &format!("Failed to initialize python: {}", err)),
+        };
         if let Ok(rule_code) = PyModule::from_code(
             py,
             &constraint.constraint.rule.python,

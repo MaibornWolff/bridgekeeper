@@ -2,6 +2,8 @@ use crate::constraint::{ConstraintInfo, ConstraintStore, ConstraintStoreRef};
 use crate::crd::{Constraint, ConstraintStatus, Violation};
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
+use crate::util::error::{kube_err, BridgekeeperError, Result};
+use crate::util::k8s_client::{list_with_retry, patch_status_with_retry};
 use argh::FromArgs;
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{APIGroup, APIResource};
@@ -20,27 +22,28 @@ use tokio::time::{sleep, Duration};
 
 lazy_static! {
     static ref NUM_AUDIT_RUNS: Counter =
-        register_counter!("bridgekeeper_audit_runs", "Number of audit runs.").unwrap();
+        register_counter!("bridgekeeper_audit_runs", "Number of audit runs.")
+            .expect("creating metric always works");
     static ref NUM_CHECKED_OBJECTS: Gauge = register_gauge!(
         "bridgekeeper_audit_checked_objects",
         "Number of objects checked in last audit run."
     )
-    .unwrap();
+    .expect("creating metric always works");
     static ref NUM_VIOLATIONS: Gauge = register_gauge!(
         "bridgekeeper_audit_violations",
         "Number of violations in last audit run."
     )
-    .unwrap();
+    .expect("creating metric always works");
     static ref NUM_CHECKED_CONSTRAINTS: Gauge = register_gauge!(
         "bridgekeeper_audit_constraints",
         "Number of constraints checked in last audit run."
     )
-    .unwrap();
+    .expect("creating metric always works");
     static ref TIMESTAMP_LAST_RUN: Gauge = register_gauge!(
         "bridgekeeper_audit_last_run_timestamp_seconds",
         "Time in seconds since unix epoch when audit was last run."
     )
-    .unwrap();
+    .expect("creating metric always works");
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -53,6 +56,11 @@ pub struct Args {
     /// do not print violations
     #[argh(switch, short = 's')]
     silent: bool,
+}
+
+struct AuditResult {
+    pub processed_objects: usize,
+    pub violations: usize,
 }
 
 pub struct Auditor {
@@ -75,11 +83,18 @@ impl Auditor {
         }
     }
 
-    pub async fn audit_constraints(&self, print_violations: bool, update_status: bool) {
+    pub async fn audit_constraints(
+        &self,
+        print_violations: bool,
+        update_status: bool,
+    ) -> Result<()> {
         let mut constraints = Vec::new();
         // While holding the lock only collect the constraints, directly auditing them would make the future of the method not implement Send which breaks the task spawn
         {
-            let constraint_store = self.constraints.lock().unwrap();
+            let constraint_store = self
+                .constraints
+                .lock()
+                .expect("lock failed. Cannot continue");
             for constraint in constraint_store.constraints.values() {
                 if constraint.constraint.audit.unwrap_or(false) {
                     constraints.push(constraint.clone());
@@ -89,11 +104,16 @@ impl Auditor {
         let mut num_objects = 0;
         let mut num_violations = 0;
         for constraint in constraints.iter() {
-            let (processed_objects, processed_violations) = self
+            let result = self
                 .audit_constraint(constraint, print_violations, update_status)
                 .await;
-            num_objects += processed_objects;
-            num_violations += processed_violations;
+            match result {
+                Ok(result) => {
+                    num_objects += result.processed_objects;
+                    num_violations += result.violations;
+                }
+                Err(err) => return Err(err),
+            }
         }
         let now: DateTime<Utc> = SystemTime::now().into();
         NUM_CHECKED_CONSTRAINTS.set(constraints.len() as f64);
@@ -101,21 +121,22 @@ impl Auditor {
         NUM_VIOLATIONS.set(num_violations as f64);
         NUM_AUDIT_RUNS.inc();
         TIMESTAMP_LAST_RUN.set(now.timestamp() as f64);
+        Ok(())
     }
 
-    pub async fn audit_constraint(
+    async fn audit_constraint(
         &self,
         constraint: &ConstraintInfo,
         print_violations: bool,
         update_status: bool,
-    ) -> (usize, usize) {
+    ) -> Result<AuditResult> {
         // collect all matching k8s resources
-        let namespaces = namespaces(self.k8s_client.clone()).await;
+        let namespaces = namespaces(self.k8s_client.clone()).await?;
         let mut matched_resources: Vec<(KubeApiResource, bool)> = Vec::new();
         for target_match in constraint.constraint.target.matches.iter() {
             let mut result = self
                 .find_k8s_resource_matches(&target_match.api_group, &target_match.kind)
-                .await;
+                .await?;
             matched_resources.append(&mut result);
         }
 
@@ -132,7 +153,9 @@ impl Auditor {
                             namespace,
                             resource_description,
                         );
-                        let objects = api.list(&ListParams::default()).await.unwrap();
+                        let objects = list_with_retry(&api, ListParams::default())
+                            .await
+                            .map_err(kube_err)?;
                         for object in objects {
                             num_objects += 1;
                             let target_identifier =
@@ -148,7 +171,10 @@ impl Auditor {
             } else {
                 let api =
                     Api::<DynamicObject>::all_with(self.k8s_client.clone(), resource_description);
-                let objects = api.list(&ListParams::default()).await.unwrap();
+                let objects = match list_with_retry(&api, ListParams::default()).await {
+                    Ok(objects) => objects,
+                    Err(err) => return Err(BridgekeeperError::KubernetesError(format!("{}", err))),
+                };
                 for object in objects {
                     let target_identifier = gen_target_identifier(resource_description, &object);
                     let (result, message, _patch) =
@@ -174,15 +200,25 @@ impl Auditor {
         let num_violations = results.len();
         // Attach audit results to constraint status
         if update_status {
-            self.report_result(constraint.name.clone(), results).await;
+            self.report_result(constraint.name.clone(), results).await?;
         }
-        (num_objects, num_violations)
+        Ok(AuditResult {
+            processed_objects: num_objects,
+            violations: num_violations,
+        })
     }
 
-    async fn report_result(&self, name: String, results: Vec<(String, Option<String>)>) {
+    async fn report_result(
+        &self,
+        name: String,
+        results: Vec<(String, Option<String>)>,
+    ) -> Result<()> {
         let api: Api<Constraint> = Api::all(self.k8s_client.clone());
         let mut status = ConstraintStatus::new();
-        let mut audit_status = status.audit.as_mut().unwrap();
+        let mut audit_status = status
+            .audit
+            .as_mut()
+            .expect("Newly created ConstraintStatus always has an audit object");
         let now: DateTime<Utc> = SystemTime::now().into();
         audit_status.timestamp = Some(now.to_rfc3339());
 
@@ -203,24 +239,34 @@ impl Auditor {
             "status": status,
         }));
         let ps = PatchParams::default();
-        api.patch_status(&name, &ps, &new_status).await.unwrap();
+        match patch_status_with_retry(&api, &name, &ps, &new_status).await {
+            Ok(_) => Ok(()),
+            Err(err) => Err(BridgekeeperError::KubernetesError(format!("{}", err))),
+        }
     }
 
     async fn find_k8s_resource_matches(
         &self,
         api_group: &str,
         kind: &str,
-    ) -> Vec<(KubeApiResource, bool)> {
+    ) -> Result<Vec<(KubeApiResource, bool)>> {
         let mut matched_resources = Vec::new();
         // core api group
         if api_group.is_empty() {
-            let versions = self.k8s_client.list_core_api_versions().await.unwrap();
-            let version = versions.versions.first().unwrap();
+            let versions = self
+                .k8s_client
+                .list_core_api_versions()
+                .await
+                .map_err(kube_err)?;
+            let version = versions
+                .versions
+                .first()
+                .expect("core api group always has a version");
             let resources = self
                 .k8s_client
                 .list_core_api_resources(version)
                 .await
-                .unwrap();
+                .map_err(kube_err)?;
             for resource in resources.resources.iter() {
                 if (kind == "*" || resource.kind.to_lowercase() == kind.to_lowercase())
                     && !resource.name.contains('/')
@@ -236,17 +282,21 @@ impl Auditor {
                 .k8s_client
                 .list_api_groups()
                 .await
-                .unwrap()
+                .map_err(kube_err)?
                 .groups
                 .iter()
             {
                 if api_group == "*" || group.name.to_lowercase() == api_group.to_lowercase() {
-                    let api_version = group.preferred_version.clone().unwrap().group_version;
+                    let api_version = group
+                        .preferred_version
+                        .clone()
+                        .expect("API Server always has a preferred_version")
+                        .group_version;
                     for resource in self
                         .k8s_client
                         .list_api_group_resources(&api_version)
                         .await
-                        .unwrap()
+                        .map_err(kube_err)?
                         .resources
                         .iter()
                     {
@@ -262,7 +312,7 @@ impl Auditor {
                 }
             }
         }
-        matched_resources
+        Ok(matched_resources)
     }
 }
 
@@ -276,7 +326,13 @@ fn gen_resource_description(
             None => String::from(""),
         },
         version: match api_group {
-            Some(group) => group.preferred_version.clone().unwrap().version,
+            Some(group) => {
+                group
+                    .preferred_version
+                    .clone()
+                    .expect("API Server always has a preferred_version")
+                    .version
+            }
             None => String::from(""),
         },
         kind: api_resource.kind.clone(),
@@ -291,14 +347,17 @@ fn gen_target_identifier(resource: &KubeApiResource, object: &DynamicObject) -> 
         resource.group,
         resource.kind,
         meta.namespace.clone().unwrap_or_else(|| "-".to_string()),
-        meta.name.clone().unwrap()
+        meta.name.clone().expect("Each object has a name")
     )
 }
 
-async fn namespaces(k8s_client: Client) -> Vec<String> {
+async fn namespaces(k8s_client: Client) -> Result<Vec<String>> {
     let mut namespaces = Vec::new();
     let namespace_api: Api<Namespace> = Api::all(k8s_client);
-    let result = namespace_api.list(&ListParams::default()).await.unwrap();
+    let result = namespace_api
+        .list(&ListParams::default())
+        .await
+        .map_err(kube_err)?;
     for namespace in result.iter() {
         if !namespace
             .metadata
@@ -306,20 +365,34 @@ async fn namespaces(k8s_client: Client) -> Vec<String> {
             .as_ref()
             .map_or(false, |map| map.contains_key("bridgekeeper/ignore"))
         {
-            namespaces.push(namespace.metadata.name.clone().unwrap());
+            namespaces.push(
+                namespace
+                    .metadata
+                    .name
+                    .clone()
+                    .expect("Each object has a name"),
+            );
         }
     }
-    namespaces
+    Ok(namespaces)
 }
 
 pub async fn run(args: Args) {
-    let client = kube::Client::try_default().await.unwrap();
+    let client = kube::Client::try_default()
+        .await
+        .expect("Fail early if kube client cannot be created");
     let constraints = ConstraintStore::new();
     let event_sender = init_event_watcher(&client);
     let mut manager = Manager::new(client.clone(), constraints.clone(), event_sender.clone());
-    manager.load_existing_constraints().await;
+    manager
+        .load_existing_constraints()
+        .await
+        .expect("Could not load existing constraints");
     let auditor = Auditor::new(client, constraints);
-    auditor.audit_constraints(!args.silent, args.status).await;
+    match auditor.audit_constraints(!args.silent, args.status).await {
+        Ok(_) => log::info!("Finished audit"),
+        Err(err) => log::error!("Audit failed: {}", err),
+    };
 }
 
 pub async fn launch_loop(client: kube::Client, constraints: ConstraintStoreRef, interval: u32) {
@@ -328,8 +401,10 @@ pub async fn launch_loop(client: kube::Client, constraints: ConstraintStoreRef, 
         loop {
             sleep(Duration::from_secs(interval as u64)).await;
             log::info!("Starting audit run");
-            auditor.audit_constraints(false, true).await;
-            log::info!("Finished audit run");
+            match auditor.audit_constraints(false, true).await {
+                Ok(_) => log::info!("Finished audit run"),
+                Err(err) => log::error!("Audit run failed: {}", err),
+            }
         }
     });
 }

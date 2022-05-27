@@ -32,8 +32,8 @@ pub fn gen_cert(service_name: String, namespace: &str, local_name: Option<String
     if let Some(local_name) = local_name {
         params.subject_alt_names.push(extract_hostname(local_name));
     }
-    let cert = rcgen::Certificate::from_params(params).unwrap();
-    let cert_data = cert.serialize_pem().unwrap();
+    let cert = rcgen::Certificate::from_params(params).expect("failed to generate certificate");
+    let cert_data = cert.serialize_pem().expect("failed to serialize cert");
     let key_data = cert.serialize_private_key_pem();
     CertKeyPair {
         cert: cert_data,
@@ -45,9 +45,11 @@ fn extract_hostname(local_name: String) -> rcgen::SanType {
     let is_ip = local_name.to_lowercase().starts_with("ip:");
     let local_name = local_name.to_lowercase().replace("ip:", "");
     let mut local_name_split = local_name.split(':');
-    let hostname = local_name_split.next().unwrap();
+    let hostname = local_name_split
+        .next()
+        .expect("expected string to have ':'");
     if is_ip {
-        rcgen::SanType::IpAddress(hostname.parse().unwrap())
+        rcgen::SanType::IpAddress(hostname.parse().expect("failed to parse IP"))
     } else {
         rcgen::SanType::DnsName(hostname.to_string())
     }
@@ -59,12 +61,16 @@ pub fn read_cert(cert_dir: String) -> Option<CertKeyPair> {
     if !Path::new(&cert_path).exists() || !Path::new(&key_path).exists() {
         None
     } else {
-        let mut cert_file = File::open(cert_path).unwrap();
+        let mut cert_file = File::open(cert_path).expect("failed to open cert file");
         let mut cert_data = String::new();
-        cert_file.read_to_string(&mut cert_data).unwrap();
-        let mut key_file = File::open(key_path).unwrap();
+        cert_file
+            .read_to_string(&mut cert_data)
+            .expect("failed to read cert file");
+        let mut key_file = File::open(key_path).expect("failed to open key file");
         let mut key_data = String::new();
-        key_file.read_to_string(&mut key_data).unwrap();
+        key_file
+            .read_to_string(&mut key_data)
+            .expect("failed to read key file");
         Some(CertKeyPair {
             cert: cert_data,
             key: key_data,
@@ -82,5 +88,5 @@ pub fn wait_for_certs(cert_dir: String) -> CertKeyPair {
         thread::sleep(time::Duration::from_secs(2));
         counter += 1;
     }
-    read_cert(cert_dir).unwrap()
+    read_cert(cert_dir).expect("failed to read cert")
 }

@@ -41,7 +41,7 @@ async fn main() {
         .with_module_level("rocket::server", log::LevelFilter::Warn)
         .with_module_level("_", log::LevelFilter::Warn)
         .init()
-        .unwrap();
+        .expect("failed to initialize logging");
     match args.command {
         CommandEnum::Server(args) => server::run(args).await,
         CommandEnum::Init(args) => helper::init::run(args).await,
