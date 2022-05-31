@@ -1,5 +1,7 @@
 replicaCount: 1
 
+installCRDs: true
+
 image:
   repository: ghcr.io/maibornwolff/bridgekeeper
   pullPolicy: IfNotPresent
@@ -52,7 +54,6 @@ affinity: {}
 
 bridgekeeper:
   # namespaces to ignore for validation
-  # Note: Changing this value after initial installation has no effect
   ignoreNamespaces:
     - kube-system
     - kube-public
@@ -60,7 +61,6 @@ bridgekeeper:
   # Set this to false if you want to take care of creating and installing the server cert and the webhook configuration yourself
   runInit: true
   # If set to true any requests in non-ignored namespaces will fail while bridgekeeper is not available (sets failure policy to "Fail")
-  # Note: Changing this value after initial installation has no effect
   strictAdmission: false
   audit: 
     # Set this to true if you want bridgekeeper to run regular audits

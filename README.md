@@ -32,6 +32,30 @@ If you want to use the current master version from git:
 
 1. Install the chart: `helm install --namespace bridgekeeper --create-namespace bridgekeeper ./charts/bridgekeeper`
 
+### Configuration
+
+Bridgekeeper has a number of options to configure behaviour. They can be set via helm values:
+
+```yaml
+replicaCount: 1  # Number of instances of bridgekeeper to run, should be >1 for production setups
+
+installCRDs: true  #  By default the helm chart installs the CRD, set to false if you want to do this in a separate workflow
+
+bridgekeeper:
+  # namespaces to ignore for validation, you should add the namespace you install bridgekeeper in
+  ignoreNamespaces:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+  # If set to true any requests in non-ignored namespaces will fail while bridgekeeper is not available (sets failure policy to "Fail")
+  strictAdmission: false
+  audit: 
+    # Set this to true if you want bridgekeeper to run regular audits, if enabled you should have replicaCount: 1
+    enabled: false
+    # Audit interval in seconds
+    interval: 600
+```
+
 ### Writing constraints
 
 Bridgekeeper uses a custom resource called Constraint to manage policies. A constraint consists of a target that describes what kubernetes resources are to be validated by the constraint and a rule script written in python.
@@ -122,7 +146,7 @@ This service is written in Rust and uses [kube-rs](https://github.com/clux/kube-
 1. Compile binary: `cargo build`
 2. Generate certificates and install webhook: `cargo run -- init --local host.k3d.internal:8081`
 3. Install CRD: `kubectl apply -f charts/bridgekeeper/crds/constraint.yaml`
-4. Launch bridgekeeper: `cargo run -- server --cert-dir .certs`
+4. Launch bridgekeeper: `cargo run -- server --cert-dir .certs --local host.k3d.internal:8081`
 
 After you are finished, run `cargo run -- cleanup --local` to delete the webook.
 
@@ -140,4 +164,3 @@ If you change the schema of the CRD (via `src/crd.rs`) you need to regenerate th
 ## Planned features
 
 * Give rules access to existing objects of the same type (to do e.g. uniqueness checks)
-* Ability to modify/patch resources

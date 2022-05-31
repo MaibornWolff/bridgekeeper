@@ -36,6 +36,9 @@ spec:
             - bridgekeeper
           args:
             - server
+            {{- if .Values.bridgekeeper.strictAdmission }}
+            - "--strict-admission"
+            {{- end }}
             {{- if .Values.bridgekeeper.audit.enabled }}
             - --audit
             - "--audit-interval"

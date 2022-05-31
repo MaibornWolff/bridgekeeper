@@ -10,11 +10,22 @@ pub struct Args {
     /// file to write yaml to
     #[argh(option, short = 'f')]
     pub file: Option<String>,
+    /// do not wrap CRD yaml in helm template if condition
+    #[argh(switch)]
+    pub no_wrapping: bool,
 }
 
 pub fn run(args: Args) {
     let data = serde_yaml::to_string(&Constraint::crd())
         .expect("Could not generate yaml from CRD definition");
     let filepath = args.file.unwrap_or_else(|| CRD_FILEPATH.to_string());
-    fs::write(filepath, data).expect("Unable to write crd yaml");
+    let wrapped_data = "{{- if .Values.installCRDs }}\n".to_string() + &data + "{{- end }}\n";
+    fs::write(
+        filepath,
+        match args.no_wrapping {
+            true => data,
+            false => wrapped_data,
+        },
+    )
+    .expect("Unable to write crd yaml");
 }

@@ -19,6 +19,12 @@ pub struct Args {
     /// audit interval in seconds, by default 600s ( = 10 minutes)
     #[argh(option)]
     audit_interval: Option<u32>,
+    /// whether or not to fail admission requests when bridgekeeper fails or is not reachable
+    #[argh(switch)]
+    strict_admission: bool,
+    /// run in local mode, value is target for the webhook, e.g. host.k3d.internal:8081, if you use an ip specify as IP:192.168.1.1:8081
+    #[argh(option)]
+    local: Option<String>,
 }
 
 pub async fn run(args: Args) {
@@ -28,6 +34,15 @@ pub async fn run(args: Args) {
     // Read certs
     let cert_dir = args.cert_dir.unwrap_or_else(|| POD_CERTS_DIR.to_string());
     let cert = crate::util::cert::wait_for_certs(cert_dir);
+
+    // Create admission webhook, ignore error as that likely means another intstance already updated the hook
+    let _ = crate::util::webhook::create_admission_webhook(
+        &client,
+        &cert,
+        &args.local,
+        args.strict_admission,
+    )
+    .await;
 
     // Initiate services
     let constraints = ConstraintStore::new();

@@ -1,4 +1,7 @@
+use k8s_openapi::ByteString;
+
 use crate::constants::{CERT_FILENAME, KEY_FILENAME};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
@@ -7,6 +10,26 @@ use std::{thread, time};
 pub struct CertKeyPair {
     pub cert: String,
     pub key: String,
+}
+
+impl CertKeyPair {
+    pub fn from_secret(map: &BTreeMap<String, ByteString>) -> Option<CertKeyPair> {
+        let cert = match map.get(CERT_FILENAME) {
+            Some(data) => match String::from_utf8(data.0.clone()) {
+                Ok(data) => data,
+                Err(_) => return None,
+            },
+            None => return None,
+        };
+        let key = match map.get(KEY_FILENAME) {
+            Some(data) => match String::from_utf8(data.0.clone()) {
+                Ok(data) => data,
+                Err(_) => return None,
+            },
+            None => return None,
+        };
+        Some(CertKeyPair { cert, key })
+    }
 }
 
 pub fn gen_cert(service_name: String, namespace: &str, local_name: Option<String>) -> CertKeyPair {

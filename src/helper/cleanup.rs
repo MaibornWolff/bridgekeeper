@@ -23,11 +23,17 @@ pub async fn run(args: Args) {
 
     // Delete webhook
     let webhook_api: kube::Api<MutatingWebhookConfiguration> = kube::Api::all(client.clone());
-    if let Err(err) = webhook_api.delete(WEBHOOK_NAME, &Default::default()).await {
+    if let Err(err) = webhook_api
+        .delete(ADMISSION_WEBHOOK_NAME, &Default::default())
+        .await
+    {
         println!("Encountered error when deleting admission webhook: {}", err);
     }
     let webhook_api: kube::Api<ValidatingWebhookConfiguration> = kube::Api::all(client.clone());
-    if let Err(err) = webhook_api.delete(WEBHOOK_NAME, &Default::default()).await {
+    if let Err(err) = webhook_api
+        .delete(CONSTRAINT_VALIDATION_WEBHOOK_NAME, &Default::default())
+        .await
+    {
         println!(
             "Encountered error when deleting constraint validation webhook: {}",
             err

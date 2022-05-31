@@ -263,7 +263,7 @@ pub fn evaluate_constraint_audit(
 }
 
 fn extract_result(
-    name: &String,
+    name: &str,
     request: &ValidationRequest,
     result: &PyAny,
 ) -> (bool, Option<String>, Option<json_patch::Patch>) {
