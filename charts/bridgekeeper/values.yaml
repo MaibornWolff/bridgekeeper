@@ -59,6 +59,9 @@ bridgekeeper:
     - kube-node-lease
   # Set this to false if you want to take care of creating and installing the server cert and the webhook configuration yourself
   runInit: true
+  # If set to true any requests in non-ignored namespaces will fail while bridgekeeper is not available (sets failure policy to "Fail")
+  # Note: Changing this value after initial installation has no effect
+  strictAdmission: false
   audit: 
     # Set this to true if you want bridgekeeper to run regular audits
     enabled: false

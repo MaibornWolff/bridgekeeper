@@ -31,6 +31,9 @@ spec:
           - "--ignore-namespace"
           - {{ . | quote }}
           {{- end }}
+          {{- if .Values.bridgekeeper.strictAdmission }}
+          - "--strict-admission"
+          {{- end }}
         env:
           - name: NAMESPACE
             valueFrom:

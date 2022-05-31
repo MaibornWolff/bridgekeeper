@@ -28,6 +28,9 @@ pub struct Args {
     /// patch namespace to ignore it for validation
     #[argh(option)]
     ignore_namespace: Vec<String>,
+    /// whether or not to fail admission requests when bridgekeeper fails or is not reachable
+    #[argh(switch)]
+    strict_admission: bool,
 }
 
 #[derive(rust_embed::RustEmbed)]
@@ -41,6 +44,20 @@ pub async fn run(args: Args) {
     let namespace = std::env::var("NAMESPACE").unwrap_or_else(|_| "default".into());
 
     // Create and store certificate
+    let cert = generate_and_store_certificates(&namespace, &args, &client).await;
+
+    // Create webhook
+    create_webhooks(&namespace, &cert, &args, &client).await;
+
+    // Patch namespaces
+    patch_namespaces(args, &client).await;
+}
+
+async fn generate_and_store_certificates(
+    namespace: &String,
+    args: &Args,
+    client: &Client,
+) -> CertKeyPair {
     let cert =
         crate::util::cert::gen_cert(SERVICE_NAME.to_string(), &namespace, args.local.clone());
     if args.local.is_some() {
@@ -93,8 +110,15 @@ pub async fn run(args: Args) {
             .await
             .expect("failed to create certificate secret");
     }
+    cert
+}
 
-    // Create webhook
+async fn create_webhooks(namespace: &str, cert: &CertKeyPair, args: &Args, client: &Client) {
+    let failure_policy = if args.strict_admission {
+        "Fail"
+    } else {
+        "Ignore"
+    };
     let webhook_data = if args.local.is_some() {
         Assets::get("admission-controller-local.yaml")
     } else {
@@ -107,8 +131,9 @@ pub async fn run(args: Args) {
         &client,
         webhook_data,
         &cert,
-        &namespace,
+        namespace,
         &args.local,
+        failure_policy,
     )
     .await;
 
@@ -124,12 +149,14 @@ pub async fn run(args: Args) {
         &client,
         webhook_data,
         &cert,
-        &namespace,
+        namespace,
         &args.local,
+        failure_policy,
     )
     .await;
+}
 
-    // Patch namespaces
+async fn patch_namespaces(args: Args, client: &Client) {
     let namespace_api: Api<Namespace> = Api::all(client.clone());
     for namespace in args.ignore_namespace {
         if namespace_api.get(&namespace).await.is_ok() {
@@ -155,6 +182,7 @@ async fn apply_webhook<T: Resource>(
     cert: &CertKeyPair,
     namespace: &str,
     local: &Option<String>,
+    failure_policy: &str,
 ) where
     <T as Resource>::DynamicType: Default,
     T: Clone,
@@ -164,7 +192,8 @@ async fn apply_webhook<T: Resource>(
 {
     let mut webhook_data = webhook_data
         .replace("<cadata>", &base64::encode(cert.cert.clone()))
-        .replace("<namespace>", namespace);
+        .replace("<namespace>", namespace)
+        .replace("<failure_policy>", failure_policy);
     if let Some(local_name) = local {
         webhook_data =
             webhook_data.replace("<host>", &local_name.to_lowercase().replace("ip:", ""));

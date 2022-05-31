@@ -76,7 +76,7 @@ async fn admission_mutate(
     Ok(Json(review))
 }
 
-#[rocket::post("/validate_constraint", data = "<data>")]
+#[rocket::post("/validate-constraint", data = "<data>")]
 async fn validate_constraint(
     data: Json<AdmissionReview<Constraint>>,
     evaluator: &State<ConstraintEvaluatorRef>,

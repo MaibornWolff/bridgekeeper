@@ -11,6 +11,6 @@ COPY manifests /build/manifests
 RUN touch src/main.rs && cargo build --release
 RUN strip /build/target/release/bridgekeeper
 
-FROM alpine:3.13
+FROM alpine:3.15
 RUN apk add --no-cache python3 openssl libgcc
 COPY --from=builder /build/target/release/bridgekeeper /usr/local/bin/

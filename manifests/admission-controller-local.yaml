@@ -17,7 +17,7 @@ webhooks:
         apiGroups: ["*"]
         apiVersions: ["*"]
         resources: ["*"]
-    failurePolicy: Ignore
+    failurePolicy: <failure_policy>
     admissionReviewVersions: ["v1"]
     sideEffects: None
     timeoutSeconds: 5

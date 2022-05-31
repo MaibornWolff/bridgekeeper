@@ -1,15 +1,15 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: bridgekeeper-webhook
+  name: bridgekeeper-constraint-validation
 webhooks:
-  - name: validator.bridgekeeper.k8s
+  - name: constraint-validation.bridgekeeper.k8s
     namespaceSelector:
       matchExpressions:
       - key: bridgekeeper/ignore
         operator: DoesNotExist
     clientConfig:
-      url: "https://<host>/validate_constraint"
+      url: "https://<host>/validate-constraint"
       caBundle: "<cadata>"
     matchPolicy: Equivalent
     rules:
@@ -17,7 +17,7 @@ webhooks:
         apiGroups: ["bridgekeeper.maibornwolff.de"]
         apiVersions: ["*"]
         resources: ["constraints"]
-    failurePolicy: Fail
+    failurePolicy: <failure_policy>
     admissionReviewVersions: ["v1"]
     sideEffects: None
     timeoutSeconds: 5
