@@ -135,7 +135,7 @@ This service is written in Rust and uses [kube-rs](https://github.com/clux/kube-
 
 ### Requirements
 
-* Current stable Rust (version >=1.53) with cargo
+* Current stable Rust (version >=1.60) with cargo
 * Python >= 3.8 with shared library (pyenv by default does not provide a shared library, install with `PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install <version>` to enable it)
 * A kubernetes cluster (version >= 1.19) with cluster-admin permissions, this guide assumes a local [k3s](https://k3s.io/) cluster set up with [k3d](https://k3d.io/)
 * kubectl, helm
@@ -145,7 +145,7 @@ This service is written in Rust and uses [kube-rs](https://github.com/clux/kube-
 
 1. Compile binary: `cargo build`
 2. Generate certificates and install webhook: `cargo run -- init --local host.k3d.internal:8081`
-3. Install CRD: `kubectl apply -f charts/bridgekeeper/crds/constraint.yaml`
+3. Install CRD: `cargo run -- gencrd -f - | kubectl apply -f -`
 4. Launch bridgekeeper: `cargo run -- server --cert-dir .certs --local host.k3d.internal:8081`
 
 After you are finished, run `cargo run -- cleanup --local` to delete the webook.

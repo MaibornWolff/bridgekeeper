@@ -20,12 +20,17 @@ pub fn run(args: Args) {
         .expect("Could not generate yaml from CRD definition");
     let filepath = args.file.unwrap_or_else(|| CRD_FILEPATH.to_string());
     let wrapped_data = "{{- if .Values.installCRDs }}\n".to_string() + &data + "{{- end }}\n";
-    fs::write(
-        filepath,
-        match args.no_wrapping {
-            true => data,
-            false => wrapped_data,
-        },
-    )
-    .expect("Unable to write crd yaml");
+    if filepath == "-" {
+        println!("{}\n", data);
+    } else {
+        fs::write(
+            filepath,
+            match args.no_wrapping {
+                true => data,
+                false => wrapped_data,
+            },
+        )
+        .expect("Unable to write crd yaml");
+    }
+
 }
