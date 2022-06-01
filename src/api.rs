@@ -1,5 +1,5 @@
-use crate::crd::Constraint;
-use crate::evaluator::{ConstraintEvaluatorRef, EvaluationResult};
+use crate::crd::Policy;
+use crate::evaluator::{PolicyEvaluatorRef, EvaluationResult};
 use crate::util::cert::CertKeyPair;
 use kube::{
     api::DynamicObject,
@@ -38,7 +38,7 @@ async fn health() -> &'static str {
 #[rocket::post("/mutate", data = "<data>")]
 async fn admission_mutate(
     data: Json<AdmissionReview<DynamicObject>>,
-    evaluator: &State<ConstraintEvaluatorRef>,
+    evaluator: &State<PolicyEvaluatorRef>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, ApiError> {
     HTTP_REQUEST_COUNTER.with_label_values(&["/mutate"]).inc();
     let admission_review = data.0;
@@ -54,7 +54,7 @@ async fn admission_mutate(
         reason,
         warnings,
         patch,
-    } = evaluator.evaluate_constraints(admission_request);
+    } = evaluator.evaluate_policies(admission_request);
     response.allowed = allowed;
     if !warnings.is_empty() {
         response.warnings = Some(warnings);
@@ -76,13 +76,13 @@ async fn admission_mutate(
     Ok(Json(review))
 }
 
-#[rocket::post("/validate-constraint", data = "<data>")]
-async fn validate_constraint(
-    data: Json<AdmissionReview<Constraint>>,
-    evaluator: &State<ConstraintEvaluatorRef>,
+#[rocket::post("/validate-policy", data = "<data>")]
+async fn validate_policy(
+    data: Json<AdmissionReview<Policy>>,
+    evaluator: &State<PolicyEvaluatorRef>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, ApiError> {
     HTTP_REQUEST_COUNTER
-        .with_label_values(&["/validate_constraint"])
+        .with_label_values(&["/validate-policy"])
         .inc();
     let admission_review = data.0;
     let admission_request = admission_review.try_into().map_err(|err| {
@@ -92,7 +92,7 @@ async fn validate_constraint(
 
     let evaluator = evaluator.lock().expect("lock failed. Cannot continue");
 
-    let (allowed, reason) = evaluator.validate_constraint(&admission_request);
+    let (allowed, reason) = evaluator.validate_policy(&admission_request);
     response.allowed = allowed;
     if !allowed {
         response.result.message = reason;
@@ -127,7 +127,7 @@ async fn metrics() -> Result<(ContentType, String), ApiError> {
     ))
 }
 
-pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
+pub async fn server(cert: CertKeyPair, evaluator: PolicyEvaluatorRef) {
     let config = Config {
         address: "0.0.0.0".parse().unwrap(),
         port: 8081,
@@ -143,7 +143,7 @@ pub async fn server(cert: CertKeyPair, evaluator: ConstraintEvaluatorRef) {
         .manage(evaluator)
         .mount(
             "/",
-            rocket::routes![admission_mutate, validate_constraint, health, metrics],
+            rocket::routes![admission_mutate, validate_policy, health, metrics],
         )
         .launch()
         .await

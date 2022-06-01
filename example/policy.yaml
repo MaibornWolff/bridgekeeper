@@ -1,5 +1,5 @@
 apiVersion: bridgekeeper.maibornwolff.de/v1alpha1
-kind: Constraint
+kind: Policy
 metadata:
   name: no-latest-tag
 spec:

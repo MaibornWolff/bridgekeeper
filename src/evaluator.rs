@@ -1,7 +1,7 @@
 use crate::{
-    constraint::{ConstraintInfo, ConstraintStoreRef},
-    crd::Constraint,
-    events::{ConstraintEvent, ConstraintEventData, EventSender},
+    policy::{PolicyInfo, PolicyStoreRef},
+    crd::Policy,
+    events::{PolicyEvent, PolicyEventData, EventSender},
 };
 use kube::core::{
     admission::{self, Operation},
@@ -14,33 +14,33 @@ use serde_derive::Serialize;
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
-    static ref MATCHED_CONSTRAINTS: CounterVec = register_counter_vec!(
-        "bridgekeeper_constraint_matched",
-        "Number of admissions matched to a constraint.",
+    static ref MATCHED_POLICIES: CounterVec = register_counter_vec!(
+        "bridgekeeper_policy_matched",
+        "Number of admissions matched to a policy.",
         &["name"]
     )
     .expect("creating metric always works");
-    static ref CONSTRAINT_EVALUATIONS_SUCCESS: CounterVec = register_counter_vec!(
-        "bridgekeeper_constraint_evaluated_success",
-        "Number of successfull constraint evaluations",
+    static ref POLICY_EVALUATIONS_SUCCESS: CounterVec = register_counter_vec!(
+        "bridgekeeper_policy_evaluated_success",
+        "Number of successfull policy evaluations",
         &["name"]
     )
     .expect("creating metric always works");
-    static ref CONSTRAINT_EVALUATIONS_REJECT: CounterVec = register_counter_vec!(
-        "bridgekeeper_constraint_evaluated_reject",
-        "Number of failed constraint evaluations.",
+    static ref POLICY_EVALUATIONS_REJECT: CounterVec = register_counter_vec!(
+        "bridgekeeper_policy_evaluated_reject",
+        "Number of failed policy evaluations.",
         &["name"]
     )
     .expect("creating metric always works");
-    static ref CONSTRAINT_EVALUATIONS_ERROR: CounterVec = register_counter_vec!(
-        "bridgekeeper_constraint_evaluated_error",
-        "Number of constraint evaluations that had an error.",
+    static ref POLICY_EVALUATIONS_ERROR: CounterVec = register_counter_vec!(
+        "bridgekeeper_policy_evaluated_error",
+        "Number of policy evaluations that had an error.",
         &["name"]
     )
     .expect("creating metric always works");
-    static ref CONSTRAINT_VALIDATIONS_FAIL: CounterVec = register_counter_vec!(
-        "bridgekeeper_constraint_validation_fail",
-        "Number of constraint validations that failed.",
+    static ref POLICY_VALIDATIONS_FAIL: CounterVec = register_counter_vec!(
+        "bridgekeeper_policy_validation_fail",
+        "Number of policy validations that failed.",
         &["name"]
     )
     .expect("creating metric always works");
@@ -67,8 +67,8 @@ impl ValidationRequest {
     }
 }
 
-pub struct ConstraintEvaluator {
-    constraints: ConstraintStoreRef,
+pub struct PolicyEvaluator {
+    policies: PolicyStoreRef,
     event_sender: EventSender,
 }
 
@@ -79,22 +79,22 @@ pub struct EvaluationResult {
     pub patch: Option<json_patch::Patch>,
 }
 
-pub type ConstraintEvaluatorRef = Arc<Mutex<ConstraintEvaluator>>;
+pub type PolicyEvaluatorRef = Arc<Mutex<PolicyEvaluator>>;
 
-impl ConstraintEvaluator {
+impl PolicyEvaluator {
     pub fn new(
-        constraints: ConstraintStoreRef,
+        policies: PolicyStoreRef,
         event_sender: EventSender,
-    ) -> ConstraintEvaluatorRef {
-        let evaluator = ConstraintEvaluator {
-            constraints,
+    ) -> PolicyEvaluatorRef {
+        let evaluator = PolicyEvaluator {
+            policies: policies,
             event_sender,
         };
         pyo3::prepare_freethreaded_python();
         Arc::new(Mutex::new(evaluator))
     }
 
-    pub fn evaluate_constraints(
+    pub fn evaluate_policies(
         &self,
         admission_request: admission::AdmissionRequest<DynamicObject>,
     ) -> EvaluationResult {
@@ -113,18 +113,18 @@ impl ConstraintEvaluator {
                 }
             }
         };
-        let constraints = self
-            .constraints
+        let policies = self
+            .policies
             .lock()
             .expect("lock failed. Cannot continue");
         let mut patches: Option<json_patch::Patch> = None;
-        for value in constraints.constraints.values() {
+        for value in policies.policies.values() {
             if value.is_match(&gvk, &namespace) {
-                MATCHED_CONSTRAINTS
+                MATCHED_POLICIES
                     .with_label_values(&[value.name.as_str()])
                     .inc();
                 log::info!(
-                    "Object {}.{}/{}/{} matches constraint {}",
+                    "Object {}.{}/{}/{} matches policy {}",
                     gvk.kind,
                     gvk.group,
                     namespace.clone().unwrap_or_else(|| "-".to_string()),
@@ -138,7 +138,7 @@ impl ConstraintEvaluator {
                     namespace.clone().unwrap_or_else(|| "-".to_string()),
                     name
                 );
-                let res = evaluate_constraint(value, &request);
+                let res = evaluate_policy(value, &request);
                 if let Some(mut patch) = res.2 {
                     if let Some(patches) = patches.as_mut() {
                         patches.0.append(&mut patch.0);
@@ -147,9 +147,9 @@ impl ConstraintEvaluator {
                     }
                 }
                 self.event_sender
-                    .send(ConstraintEvent {
-                        constraint_reference: value.ref_info.clone(),
-                        event_data: ConstraintEventData::Evaluated {
+                    .send(PolicyEvent {
+                        policy_reference: value.ref_info.clone(),
+                        event_data: PolicyEventData::Evaluated {
                             target_identifier,
                             result: res.0,
                             reason: res.1.clone(),
@@ -157,26 +157,26 @@ impl ConstraintEvaluator {
                     })
                     .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
                 if res.0 {
-                    CONSTRAINT_EVALUATIONS_SUCCESS
+                    POLICY_EVALUATIONS_SUCCESS
                         .with_label_values(&[value.name.as_str()])
                         .inc();
-                    log::info!("Constraint '{}' evaluates to {}", value.name, res.0);
+                    log::info!("Policy '{}' evaluates to {}", value.name, res.0);
                     if let Some(warning) = res.1 {
                         warnings.push(warning);
                     }
                 } else {
-                    CONSTRAINT_EVALUATIONS_REJECT
+                    POLICY_EVALUATIONS_REJECT
                         .with_label_values(&[value.name.as_str()])
                         .inc();
                     let reason = res.1.unwrap_or_else(|| "-".to_string());
                     log::info!(
-                        "Constraint '{}' evaluates to {} with message '{}'",
+                        "Policy '{}' evaluates to {} with message '{}'",
                         value.name,
                         res.0,
                         reason,
                     );
-                    if value.constraint.enforce.unwrap_or(true) {
-                        // If one constraint fails no need to evaluate the others
+                    if value.policy.enforce.unwrap_or(true) {
+                        // If one policy fails no need to evaluate the others
                         return EvaluationResult {
                             allowed: res.0,
                             reason: Some(reason),
@@ -197,19 +197,19 @@ impl ConstraintEvaluator {
         }
     }
 
-    pub fn validate_constraint(
+    pub fn validate_policy(
         &self,
-        request: &admission::AdmissionRequest<Constraint>,
+        request: &admission::AdmissionRequest<Policy>,
     ) -> (bool, Option<String>) {
-        if let Some(constraint) = request.object.as_ref() {
-            let python_code = constraint.spec.rule.python.clone();
+        if let Some(policy) = request.object.as_ref() {
+            let python_code = policy.spec.rule.python.clone();
             Python::with_gil(|py| {
                 if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
-                    let name = match constraint.metadata.name.as_ref() {
+                    let name = match policy.metadata.name.as_ref() {
                         Some(name) => name.as_str(),
                         None => "-invalidname-",
                     };
-                    CONSTRAINT_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
+                    POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
                     (false, Some(format!("Python compile error: {:?}", err)))
                 } else {
                     (true, None)
@@ -221,11 +221,11 @@ impl ConstraintEvaluator {
     }
 }
 
-fn evaluate_constraint(
-    constraint: &ConstraintInfo,
+fn evaluate_policy(
+    policy: &PolicyInfo,
     request: &ValidationRequest,
 ) -> (bool, Option<String>, Option<json_patch::Patch>) {
-    let name = &constraint.name;
+    let name = &policy.name;
     Python::with_gil(|py| {
         let obj = match pythonize::pythonize(py, &request) {
             Ok(obj) => obj,
@@ -233,7 +233,7 @@ fn evaluate_constraint(
         };
         if let Ok(rule_code) = PyModule::from_code(
             py,
-            &constraint.constraint.rule.python,
+            &policy.policy.rule.python,
             "rule.py",
             "bridgekeeper",
         ) {
@@ -251,15 +251,15 @@ fn evaluate_constraint(
     })
 }
 
-pub fn evaluate_constraint_audit(
-    constraint: &ConstraintInfo,
+pub fn evaluate_policy_audit(
+    policy: &PolicyInfo,
     object: DynamicObject,
 ) -> (bool, Option<String>, Option<json_patch::Patch>) {
     let request = ValidationRequest {
         object,
         operation: Operation::Update,
     };
-    evaluate_constraint(constraint, &request)
+    evaluate_policy(policy, &request)
 }
 
 fn extract_result(
@@ -289,7 +289,7 @@ fn extract_result(
 }
 
 fn fail(name: &str, reason: &str) -> (bool, Option<String>, Option<json_patch::Patch>) {
-    CONSTRAINT_EVALUATIONS_ERROR
+    POLICY_EVALUATIONS_ERROR
         .with_label_values(&[name])
         .inc();
     (false, Some(reason.to_string()), None)
@@ -309,7 +309,7 @@ fn generate_patches(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::ConstraintSpec;
+    use crate::crd::PolicySpec;
     use kube::core::ObjectMeta;
 
     #[test]
@@ -319,9 +319,9 @@ mod tests {
 def validate(request):
     return True
         "#;
-        let constraint_spec = ConstraintSpec::from_python(python.to_string());
-        let constraint =
-            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+        let policy_spec = PolicySpec::from_python(python.to_string());
+        let policy =
+            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let object = DynamicObject {
             types: None,
@@ -333,7 +333,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request);
         assert!(res, "validate function failed: {}", reason.unwrap());
         assert!(reason.is_none());
         assert!(patch.is_none());
@@ -346,9 +346,9 @@ def validate(request):
 def validate(request):
     return False, "foobar"
         "#;
-        let constraint_spec = ConstraintSpec::from_python(python.to_string());
-        let constraint =
-            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+        let policy_spec = PolicySpec::from_python(python.to_string());
+        let policy =
+            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let object = DynamicObject {
             types: None,
@@ -360,7 +360,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request);
         assert!(!res);
         assert!(reason.is_some());
         assert_eq!("foobar".to_string(), reason.unwrap());
@@ -374,9 +374,9 @@ def validate(request):
 def validate(request):
     return false, "foobar"
         "#;
-        let constraint_spec = ConstraintSpec::from_python(python.to_string());
-        let constraint =
-            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+        let policy_spec = PolicySpec::from_python(python.to_string());
+        let policy =
+            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let object = DynamicObject {
             types: None,
@@ -388,7 +388,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request);
         assert!(!res);
         assert!(reason.is_some());
         assert_eq!(
@@ -407,9 +407,9 @@ def validate(request):
     object["b"] = "2"
     return True, None, object
         "#;
-        let constraint_spec = ConstraintSpec::from_python(python.to_string());
-        let constraint =
-            ConstraintInfo::new("test".to_string(), constraint_spec, Default::default());
+        let policy_spec = PolicySpec::from_python(python.to_string());
+        let policy =
+            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let data = serde_json::from_str(r#"{"a": 1, "b": "1"}"#).unwrap();
         let object = DynamicObject {
@@ -422,7 +422,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_constraint(&constraint, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request);
         assert!(res, "validate function failed: {}", reason.unwrap());
         assert!(reason.is_none());
         assert!(patch.is_some());

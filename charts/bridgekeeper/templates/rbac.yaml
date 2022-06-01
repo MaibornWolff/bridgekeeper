@@ -36,12 +36,12 @@ rules:
   verbs:
   - patch
   - update
-# During audit runs bridgekeeper needs to update the constraint status with the audit results
+# During audit runs bridgekeeper needs to update the policy status with the audit results
 - apiGroups:
   - "bridgekeeper.maibornwolff.de"
   resources:
-  - constraints
-  - constraints/status
+  - policies
+  - policies/status
   verbs:
   - patch
   - update

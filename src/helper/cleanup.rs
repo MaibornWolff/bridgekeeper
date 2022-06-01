@@ -31,11 +31,11 @@ pub async fn run(args: Args) {
     }
     let webhook_api: kube::Api<ValidatingWebhookConfiguration> = kube::Api::all(client.clone());
     if let Err(err) = webhook_api
-        .delete(CONSTRAINT_VALIDATION_WEBHOOK_NAME, &Default::default())
+        .delete(POLICY_VALIDATION_WEBHOOK_NAME, &Default::default())
         .await
     {
         println!(
-            "Encountered error when deleting constraint validation webhook: {}",
+            "Encountered error when deleting policy validation webhook: {}",
             err
         );
     }

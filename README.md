@@ -6,13 +6,11 @@
 >
 > -- Based loosely on Monty Python and the Holy Grail
 
-Bridgekeeper helps you to enforce policies in your kubernetes cluster by providing a simple declarative way to define constraints using the python programming language. Whenever resources are created or updated matching constraints will be evaluated and if a constraint is violated the resource will be rejected.
+Bridgekeeper helps you to enforce policies in your kubernetes cluster by providing a simple declarative way to define policies using the python programming language. Whenever resources are created or updated matching policies will be evaluated and if a policy is violated the resource will be rejected.
 
-From a technical perspective bridgekeeper acts as a kubernetes [admission webhook](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/). For every admission request that it gets it will check all registered constraints if any match the resource of the request and if yes the constraint will be evaluated and based on the result the admission request will be allowed or rejected.
+From a technical perspective bridgekeeper acts as a kubernetes [admission webhook](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/). For every admission request that it gets it will check all registered policies if any match the resource of the request and if yes the policy will be evaluated and based on the result the admission request will be allowed or rejected.
 
-Bridgekeeper is very similar to and heavily inspired by [OPA gatekeeper](https://github.com/open-policy-agent/gatekeeper). It was born out of the idea to make gatekeeper simpler and use python instead of rego (because we love python) as the policy language.
-
-**This service is work-in-progress and should not yet be used in production setups. Use at your own risk.**
+Bridgekeeper is similar to and inspired by [OPA gatekeeper](https://github.com/open-policy-agent/gatekeeper). It was born out of the idea to make gatekeeper simpler and use python instead of rego (because we love python) as the policy language.
 
 ## User Guide
 
@@ -56,15 +54,15 @@ bridgekeeper:
     interval: 600
 ```
 
-### Writing constraints
+### Writing policies
 
-Bridgekeeper uses a custom resource called Constraint to manage policies. A constraint consists of a target that describes what kubernetes resources are to be validated by the constraint and a rule script written in python.
+Bridgekeeper uses a custom resource called Policy to manage rules. A policy consists of a target that describes what kubernetes resources are to be validated by the policy and a rule script written in python.
 
 Below is a minimal example:
 
 ```yaml
 apiVersion: bridgekeeper.maibornwolff.de/v1alpha1
-kind: Constraint
+kind: Policy
 metadata:
   name: foobar
 spec:
@@ -78,10 +76,10 @@ spec:
         return False, "You don't want to deploy anything today"
 ```
 
-The constraint spec has the following fields:
+The policy spec has the following fields:
 
-* `audit`: If set to true and bridgekeeper is started with the audit feature enabled this constraint will be checked during audit runs (see also next section).
-* `enforce`: If set to false a constraint violation will be logged but the request will still be allowed. Defaults to true. Can be used to safely test constraints.
+* `audit`: If set to true and bridgekeeper is started with the audit feature enabled this policy will be checked during audit runs (see also next section).
+* `enforce`: If set to false a policy violation will be logged but the request will still be allowed. Defaults to true. Can be used to safely test policies.
 * `target.matches`: A list of one or more match parameters consisting of `apiGroup` and `kind`. Wildcards can be used as `"*"`, if the resource has no API group (e.g. namespaces) use an empty string `""`.
 * `target.namespaces`: An optional list of strings, if specified only resources from one of these namespaces are matched, only this or `target.excludedNamespaces` can be specified, not both
 * `target.excludedNamespaces`: An optional list of strings, if specified resources from one of these namespaces are not matched, only this or `target.namespaces` can be specified, not both
@@ -99,13 +97,13 @@ If the code returns a mutated object bridekeeper will calculate the diff between
 
 You can use the entire python feature set and standard library in your script (so stuff like `import re` is possible). Using threads, accessing the filesystem or using the network (e.g. via sockets) should not be done and might be prohibited in the future.
 
-You can find a more useful example under [example/constraint.yaml](example/constraint.yaml) that denies deployments that use a docker image with a `latest` tag. Try it out using the following steps:
+You can find a more useful example under [example/policy.yaml](example/policy.yaml) that denies deployments that use a docker image with a `latest` tag. Try it out using the following steps:
 
-1. `kubectl apply -f example/constraint.yaml` to create the constraint
+1. `kubectl apply -f example/policy.yaml` to create the policy
 2. `kubectl apply -f example/deployment-error.yaml` will yield an error because the docker image is referenced using the `latest` tag
 3. `kubectl apply -f example/deployment-ok.yaml` will be accepted because the docker image tag uses a specific version
 
-Constraints are not namespaced and apply to the entire cluster unless `target.namespaces` or `target.excludedNamespaces` are used to filter namespaces. To completely exclude a namespace from bridgekeeper label it with `bridgekeeper/ignore`. If you use the helm chart to install bridgekeeper you can set the option `bridgekeeper.ignoreNamespaces` to a list of namespaces that should be labled and it will be done during initial install (by default it will label the `kube-*` namespaces).
+Policies are not namespaced and apply to the entire cluster unless `target.namespaces` or `target.excludedNamespaces` are used to filter namespaces. To completely exclude a namespace from bridgekeeper label it with `bridgekeeper/ignore`. If you use the helm chart to install bridgekeeper you can set the option `bridgekeeper.ignoreNamespaces` to a list of namespaces that should be labled and it will be done during initial install (by default it will label the `kube-*` namespaces).
 
 ### Mutations
 
@@ -115,17 +113,19 @@ Mutations are implemented very lightweight in bridgekeeper. Instead of generatin
 
 To mutate the object the validate function must return a tuple of boolean, string, object/dict. If the object is rejected the mutations are ignored. If you do not want to return a reason just return `None`.
 
+An example that adds a label to each deployment can be found under [example/mutate-add-label.yaml](example/mutate-add-label.yaml)
+
 ### Auditing
 
-Bridgekeeper has an audit feature that periodically checks if any existing objects violate constraints. This is useful to check objects that were created before the constraint was installed.
+Bridgekeeper has an audit feature that periodically checks if any existing objects violate policies. This is useful to check objects that were created before the policy was installed.
 
-To enable the audit feature launch bridgekeeper with the `--audit` flag. The audit interval is by default 10 minutes and can be changed with `--audit-interval <seconds>`. If installed using helm audit can be enabled by setting `bridgekeeper.audit.enable` to `true`.
+To enable the audit feature launch bridgekeeper with the `--audit` flag. The audit interval is by default to 10 minutes and can be changed with `--audit-interval <seconds>`. If installed using helm audit can be enabled by setting `bridgekeeper.audit.enable` to `true` and the interval can be set with `bridgekeeper.audit.interval`.
 
-To include a constraint in the audit run set the `spec.audit` field to `yes`. The namespace include/exclude lists of the constraints and the `bridgekeeper/ignore` label on namespaces is honored during audit runs. The results of the run will be stored in the status of the constraint with a list of objects that violate the constraint and the provided reason if any.
+To include a policy in the audit run set the `spec.audit` field to `true`. The namespace include/exclude lists of the policies and the `bridgekeeper/ignore` label on namespaces are honored during audit runs. The results of the run will be stored in the status of the policy with a list of objects that violate the policy and the provided reason if any.
 
-A single audit run can also be launched locally: `bridgekeeper audit`. This will connect to the kubernetes cluster defined by the currently active kubernetes context (as kubectl would use it), read in all existing constraints and perform an audit run. All objects that violate a constraint are printed on the console as output, this can be disabled by providing `--silent`. By adding the `--status` flag the constraint status will also be updated with the violations.
+A single audit run can also be launched locally: `bridgekeeper audit`. This will connect to the kubernetes cluster defined by the currently active kubernetes context (as kubectl would use it), read in all existing policies and perform an audit run. All objects that violate a policy are printed on the console as output, this can be disabled by providing `--silent`. By adding the `--status` flag the policy status will also be updated with the violations.
 
-Note: Currently the audit feature only works correctly if you launch bridgekeeper as a single instance (in helm `replicaCount: 1`).
+Note: Currently the audit feature only works correctly if you launch bridgekeeper as a single instance (in helm set `replicaCount: 1`).
 
 Any mutations returned by the rules are ignored in audit mode.
 
@@ -152,8 +152,8 @@ After you are finished, run `cargo run -- cleanup --local` to delete the webook.
 
 ### Development cycle
 
-As long as you do not change the schema of the constraints you can just recompile and restart the server without having to reinstall any of the other stuff (certificate, webhook, constraints).
-If you change the schema of the CRD (via `src/crd.rs`) you need to regenerate the CRD yaml by running `cargo run -- gencrd`.
+As long as you do not change the schema of the policies you can just recompile and restart the server without having to reinstall any of the other stuff (certificate, webhook, policies).
+If you change the schema of the CRD (via `src/crd.rs`) you need to regenerate the CRD yaml in the helm chart by running `cargo run -- gencrd`.
 
 ### Test cluster deployment
 

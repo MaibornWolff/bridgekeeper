@@ -143,9 +143,9 @@ async fn generate_and_store_certificates(
 }
 
 async fn create_webhooks(cert: &CertKeyPair, args: &Args, client: &Client) {
-    create_constraint_validation_webhook(client, cert, &args.local, args.strict_admission)
+    create_policy_validation_webhook(client, cert, &args.local, args.strict_admission)
         .await
-        .expect("Failed to create constraint validation webhook");
+        .expect("Failed to create policy validation webhook");
 }
 
 async fn patch_namespaces(args: Args, client: &Client) {

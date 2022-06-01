@@ -1,22 +1,25 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: bridgekeeper-constraint-validation
+  name: bridgekeeper-policy-validation
 webhooks:
-  - name: constraint-validation.bridgekeeper.k8s
+  - name: policy-validation.bridgekeeper.k8s
     namespaceSelector:
       matchExpressions:
       - key: bridgekeeper/ignore
         operator: DoesNotExist
     clientConfig:
-      url: "https://<host>/validate-constraint"
+      service:
+        name: bridgekeeper-webhook
+        namespace: "<namespace>"
+        path: "/validate-policy"
       caBundle: "<cadata>"
     matchPolicy: Equivalent
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: ["bridgekeeper.maibornwolff.de"]
         apiVersions: ["*"]
-        resources: ["constraints"]
+        resources: ["policies"]
     failurePolicy: <failure_policy>
     admissionReviewVersions: ["v1"]
     sideEffects: None

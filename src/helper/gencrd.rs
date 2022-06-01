@@ -1,4 +1,4 @@
-use crate::{constants::CRD_FILEPATH, crd::Constraint};
+use crate::{constants::CRD_FILEPATH, crd::Policy};
 use argh::FromArgs;
 use kube::CustomResourceExt;
 use std::fs;
@@ -16,7 +16,7 @@ pub struct Args {
 }
 
 pub fn run(args: Args) {
-    let data = serde_yaml::to_string(&Constraint::crd())
+    let data = serde_yaml::to_string(&Policy::crd())
         .expect("Could not generate yaml from CRD definition");
     let filepath = args.file.unwrap_or_else(|| CRD_FILEPATH.to_string());
     let wrapped_data = "{{- if .Values.installCRDs }}\n".to_string() + &data + "{{- end }}\n";

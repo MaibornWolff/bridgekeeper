@@ -1,8 +1,8 @@
 use crate::util::error::{kube_err, Result};
 use crate::{
-    constraint::ConstraintStoreRef,
-    crd::Constraint,
-    events::{ConstraintEvent, ConstraintEventData, EventSender},
+    policy::PolicyStoreRef,
+    crd::Policy,
+    events::{PolicyEvent, PolicyEventData, EventSender},
 };
 use futures::StreamExt;
 use kube::runtime::{watcher, watcher::Event};
@@ -14,40 +14,40 @@ use tokio::task;
 
 pub struct Manager {
     k8s_client: Client,
-    constraints: ConstraintStoreRef,
+    policies: PolicyStoreRef,
     event_sender: EventSender,
 }
 
 impl Manager {
     pub fn new(
         client: Client,
-        constraints: ConstraintStoreRef,
+        policies: PolicyStoreRef,
         event_sender: EventSender,
     ) -> Manager {
         Manager {
             k8s_client: client,
-            constraints,
+            policies,
             event_sender,
         }
     }
 
-    pub async fn load_existing_constraints(&mut self) -> Result<()> {
-        let constraints_api = self.constraints_api();
-        let res = constraints_api
+    pub async fn load_existing_policies(&mut self) -> Result<()> {
+        let policies_api = self.policies_api();
+        let res = policies_api
             .list(&ListParams::default())
             .await
             .map_err(kube_err)?;
         {
-            let mut constraints = self
-                .constraints
+            let mut policies = self
+                .policies
                 .lock()
                 .expect("lock failed. Cannot continue");
-            for constraint in res {
-                if let Some(ref_info) = constraints.add_constraint(constraint) {
+            for policy in res {
+                if let Some(ref_info) = policies.add_policy(policy) {
                     self.event_sender
-                        .send(ConstraintEvent {
-                            constraint_reference: ref_info,
-                            event_data: ConstraintEventData::Loaded,
+                        .send(PolicyEvent {
+                            policy_reference: ref_info,
+                            event_data: PolicyEventData::Loaded,
                         })
                         .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
                 }
@@ -57,35 +57,35 @@ impl Manager {
     }
 
     pub async fn start(&mut self) {
-        let constraints_api = self.constraints_api();
-        let constraints = self.constraints.clone();
+        let policies_api = self.policies_api();
+        let policies = self.policies.clone();
         let event_sender = self.event_sender.clone();
 
         task::spawn(async move {
-            let watcher = watcher(constraints_api.clone(), ListParams::default());
+            let watcher = watcher(policies_api.clone(), ListParams::default());
             let mut pinned_watcher = Box::pin(watcher);
             loop {
                 let res = pinned_watcher.next().await;
                 if let Some(Ok(event)) = res {
                     match event {
-                        Event::Applied(constraint) => {
-                            let mut constraints =
-                                constraints.lock().expect("lock failed. Cannot continue");
-                            if let Some(ref_info) = constraints.add_constraint(constraint) {
+                        Event::Applied(policy) => {
+                            let mut policies =
+                                policies.lock().expect("lock failed. Cannot continue");
+                            if let Some(ref_info) = policies.add_policy(policy) {
                                 event_sender
-                                    .send(ConstraintEvent {
-                                        constraint_reference: ref_info,
-                                        event_data: ConstraintEventData::Loaded,
+                                    .send(PolicyEvent {
+                                        policy_reference: ref_info,
+                                        event_data: PolicyEventData::Loaded,
                                     })
                                     .unwrap_or_else(|err| {
                                         log::warn!("Could not send event: {:?}", err)
                                     });
                             }
                         }
-                        Event::Deleted(constraint) => {
-                            let mut constraints =
-                                constraints.lock().expect("lock failed. Cannot continue");
-                            constraints.remove_constraint(constraint);
+                        Event::Deleted(policy) => {
+                            let mut policies =
+                                policies.lock().expect("lock failed. Cannot continue");
+                            policies.remove_policy(policy);
                         }
                         _ => (),
                     }
@@ -94,7 +94,7 @@ impl Manager {
         });
     }
 
-    fn constraints_api(&mut self) -> Api<Constraint> {
+    fn policies_api(&mut self) -> Api<Policy> {
         Api::all(self.k8s_client.clone())
     }
 }

@@ -1,5 +1,5 @@
-use crate::constraint::{ConstraintInfo, ConstraintStore, ConstraintStoreRef};
-use crate::crd::{Constraint, ConstraintStatus, Violation};
+use crate::policy::{PolicyInfo, PolicyStore, PolicyStoreRef};
+use crate::crd::{Policy, PolicyStatus, Violation};
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use crate::util::error::{kube_err, BridgekeeperError, Result};
@@ -34,9 +34,9 @@ lazy_static! {
         "Number of violations in last audit run."
     )
     .expect("creating metric always works");
-    static ref NUM_CHECKED_CONSTRAINTS: Gauge = register_gauge!(
-        "bridgekeeper_audit_constraints",
-        "Number of constraints checked in last audit run."
+    static ref NUM_CHECKED_POLICIES: Gauge = register_gauge!(
+        "bridgekeeper_audit_policies",
+        "Number of policies checked in last audit run."
     )
     .expect("creating metric always works");
     static ref TIMESTAMP_LAST_RUN: Gauge = register_gauge!(
@@ -48,9 +48,9 @@ lazy_static! {
 
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "audit")]
-/// Audit existing constraints
+/// Audit existing policies
 pub struct Args {
-    /// update constraint status with list of violations
+    /// update policy status with list of violations
     #[argh(switch)]
     status: bool,
     /// do not print violations
@@ -65,47 +65,47 @@ struct AuditResult {
 
 pub struct Auditor {
     k8s_client: Client,
-    constraints: ConstraintStoreRef,
+    policies: PolicyStoreRef,
     //event_sender: EventSender,
 }
 
 impl Auditor {
     pub fn new(
         client: Client,
-        constraints: ConstraintStoreRef,
+        policies: PolicyStoreRef,
         //event_sender: EventSender,
     ) -> Auditor {
         pyo3::prepare_freethreaded_python();
         Auditor {
             k8s_client: client,
-            constraints,
+            policies,
             //event_sender,
         }
     }
 
-    pub async fn audit_constraints(
+    pub async fn audit_policies(
         &self,
         print_violations: bool,
         update_status: bool,
     ) -> Result<()> {
-        let mut constraints = Vec::new();
-        // While holding the lock only collect the constraints, directly auditing them would make the future of the method not implement Send which breaks the task spawn
+        let mut policies = Vec::new();
+        // While holding the lock only collect the policies, directly auditing them would make the future of the method not implement Send which breaks the task spawn
         {
-            let constraint_store = self
-                .constraints
+            let policy_store = self
+                .policies
                 .lock()
                 .expect("lock failed. Cannot continue");
-            for constraint in constraint_store.constraints.values() {
-                if constraint.constraint.audit.unwrap_or(false) {
-                    constraints.push(constraint.clone());
+            for policy in policy_store.policies.values() {
+                if policy.policy.audit.unwrap_or(false) {
+                    policies.push(policy.clone());
                 }
             }
         }
         let mut num_objects = 0;
         let mut num_violations = 0;
-        for constraint in constraints.iter() {
+        for policy in policies.iter() {
             let result = self
-                .audit_constraint(constraint, print_violations, update_status)
+                .audit_policy(policy, print_violations, update_status)
                 .await;
             match result {
                 Ok(result) => {
@@ -116,7 +116,7 @@ impl Auditor {
             }
         }
         let now: DateTime<Utc> = SystemTime::now().into();
-        NUM_CHECKED_CONSTRAINTS.set(constraints.len() as f64);
+        NUM_CHECKED_POLICIES.set(policies.len() as f64);
         NUM_CHECKED_OBJECTS.set(num_objects as f64);
         NUM_VIOLATIONS.set(num_violations as f64);
         NUM_AUDIT_RUNS.inc();
@@ -124,16 +124,16 @@ impl Auditor {
         Ok(())
     }
 
-    async fn audit_constraint(
+    async fn audit_policy(
         &self,
-        constraint: &ConstraintInfo,
+        policy: &PolicyInfo,
         print_violations: bool,
         update_status: bool,
     ) -> Result<AuditResult> {
         // collect all matching k8s resources
         let namespaces = namespaces(self.k8s_client.clone()).await?;
         let mut matched_resources: Vec<(KubeApiResource, bool)> = Vec::new();
-        for target_match in constraint.constraint.target.matches.iter() {
+        for target_match in policy.policy.target.matches.iter() {
             let mut result = self
                 .find_k8s_resource_matches(&target_match.api_group, &target_match.kind)
                 .await?;
@@ -147,7 +147,7 @@ impl Auditor {
         for (resource_description, namespaced) in matched_resources.iter() {
             if *namespaced {
                 for namespace in namespaces.iter() {
-                    if constraint.is_namespace_match(namespace) {
+                    if policy.is_namespace_match(namespace) {
                         let api = Api::<DynamicObject>::namespaced_with(
                             self.k8s_client.clone(),
                             namespace,
@@ -161,7 +161,7 @@ impl Auditor {
                             let target_identifier =
                                 gen_target_identifier(resource_description, &object);
                             let (result, message, _patch) =
-                                crate::evaluator::evaluate_constraint_audit(constraint, object);
+                                crate::evaluator::evaluate_policy_audit(policy, object);
                             if !result {
                                 results.push((target_identifier, message));
                             }
@@ -178,7 +178,7 @@ impl Auditor {
                 for object in objects {
                     let target_identifier = gen_target_identifier(resource_description, &object);
                     let (result, message, _patch) =
-                        crate::evaluator::evaluate_constraint_audit(constraint, object);
+                        crate::evaluator::evaluate_policy_audit(policy, object);
                     if !result {
                         results.push((target_identifier, message));
                     }
@@ -192,15 +192,15 @@ impl Auditor {
                     None => String::new(),
                 };
                 println!(
-                    "{} violates constraint '{}'{}",
-                    object, constraint.name, message
+                    "{} violates policy '{}'{}",
+                    object, policy.name, message
                 );
             }
         }
         let num_violations = results.len();
-        // Attach audit results to constraint status
+        // Attach audit results to policy status
         if update_status {
-            self.report_result(constraint.name.clone(), results).await?;
+            self.report_result(policy.name.clone(), results).await?;
         }
         Ok(AuditResult {
             processed_objects: num_objects,
@@ -213,12 +213,12 @@ impl Auditor {
         name: String,
         results: Vec<(String, Option<String>)>,
     ) -> Result<()> {
-        let api: Api<Constraint> = Api::all(self.k8s_client.clone());
-        let mut status = ConstraintStatus::new();
+        let api: Api<Policy> = Api::all(self.k8s_client.clone());
+        let mut status = PolicyStatus::new();
         let mut audit_status = status
             .audit
             .as_mut()
-            .expect("Newly created ConstraintStatus always has an audit object");
+            .expect("Newly created PolicyStatus always has an audit object");
         let now: DateTime<Utc> = SystemTime::now().into();
         audit_status.timestamp = Some(now.to_rfc3339());
 
@@ -232,7 +232,7 @@ impl Auditor {
         }
         audit_status.violations = Some(violations);
 
-        let crd_resource = Constraint::api_resource();
+        let crd_resource = Policy::api_resource();
         let new_status = Patch::Merge(json!({
             "apiVersion": crd_resource.api_version,
             "kind": crd_resource.kind,
@@ -381,27 +381,27 @@ pub async fn run(args: Args) {
     let client = kube::Client::try_default()
         .await
         .expect("Fail early if kube client cannot be created");
-    let constraints = ConstraintStore::new();
+    let policies = PolicyStore::new();
     let event_sender = init_event_watcher(&client);
-    let mut manager = Manager::new(client.clone(), constraints.clone(), event_sender.clone());
+    let mut manager = Manager::new(client.clone(), policies.clone(), event_sender.clone());
     manager
-        .load_existing_constraints()
+        .load_existing_policies()
         .await
-        .expect("Could not load existing constraints");
-    let auditor = Auditor::new(client, constraints);
-    match auditor.audit_constraints(!args.silent, args.status).await {
+        .expect("Could not load existing policies");
+    let auditor = Auditor::new(client, policies);
+    match auditor.audit_policies(!args.silent, args.status).await {
         Ok(_) => log::info!("Finished audit"),
         Err(err) => log::error!("Audit failed: {}", err),
     };
 }
 
-pub async fn launch_loop(client: kube::Client, constraints: ConstraintStoreRef, interval: u32) {
+pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interval: u32) {
     task::spawn(async move {
-        let auditor = Auditor::new(client, constraints);
+        let auditor = Auditor::new(client, policies);
         loop {
             sleep(Duration::from_secs(interval as u64)).await;
             log::info!("Starting audit run");
-            match auditor.audit_constraints(false, true).await {
+            match auditor.audit_policies(false, true).await {
                 Ok(_) => log::info!("Finished audit run"),
                 Err(err) => log::error!("Audit run failed: {}", err),
             }

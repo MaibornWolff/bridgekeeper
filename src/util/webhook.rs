@@ -40,16 +40,16 @@ pub async fn create_admission_webhook(
     }
 }
 
-pub async fn create_constraint_validation_webhook(
+pub async fn create_policy_validation_webhook(
     client: &Client,
     cert: &CertKeyPair,
     local: &Option<String>,
     strict_admission: bool,
 ) -> Result<()> {
     let webhook_data = if local.is_some() {
-        Assets::get("constraint-validation-controller-local.yaml")
+        Assets::get("policy-validation-controller-local.yaml")
     } else {
-        Assets::get("constraint-validation-controller.yaml")
+        Assets::get("policy-validation-controller.yaml")
     }
     .expect("failed to read admission controller template");
     let webhook_data = String::from_utf8(webhook_data.data.to_vec())
@@ -57,7 +57,7 @@ pub async fn create_constraint_validation_webhook(
 
     match apply_webhook::<ValidatingWebhookConfiguration>(
         client,
-        CONSTRAINT_VALIDATION_WEBHOOK_NAME,
+        POLICY_VALIDATION_WEBHOOK_NAME,
         webhook_data,
         cert,
         local,

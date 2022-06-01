@@ -29,6 +29,8 @@ jobs:
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
           TAG=${GITHUB_REF//refs\/tags\/v}
+          VERSION=${GITHUB_REF//refs\/tags\/v}
+          sed -i 's/version = "0.1.0"/version = "'${VERSION}'"/' Cargo.toml
           docker build . -t $IMAGE_ID:$TAG
           docker push $IMAGE_ID:$TAG
 

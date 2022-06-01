@@ -3,7 +3,7 @@ use argh::FromArgs;
 mod api;
 mod audit;
 mod constants;
-mod constraint;
+mod policy;
 mod crd;
 mod evaluator;
 mod events;

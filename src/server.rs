@@ -1,8 +1,8 @@
 use argh::FromArgs;
 
 use crate::constants::POD_CERTS_DIR;
-use crate::constraint::ConstraintStore;
-use crate::evaluator::ConstraintEvaluator;
+use crate::policy::PolicyStore;
+use crate::evaluator::PolicyEvaluator;
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
 
@@ -45,18 +45,18 @@ pub async fn run(args: Args) {
     .await;
 
     // Initiate services
-    let constraints = ConstraintStore::new();
+    let policies = PolicyStore::new();
     let event_sender = init_event_watcher(&client);
-    let mut manager = Manager::new(client.clone(), constraints.clone(), event_sender.clone());
-    let evaluator = ConstraintEvaluator::new(constraints.clone(), event_sender.clone());
+    let mut manager = Manager::new(client.clone(), policies.clone(), event_sender.clone());
+    let evaluator = PolicyEvaluator::new(policies.clone(), event_sender.clone());
     manager.start().await;
     manager
-        .load_existing_constraints()
+        .load_existing_policies()
         .await
-        .expect("Could not load existing constraints");
+        .expect("Could not load existing policies");
 
     if args.audit {
-        crate::audit::launch_loop(client, constraints, args.audit_interval.unwrap_or(600)).await;
+        crate::audit::launch_loop(client, policies, args.audit_interval.unwrap_or(600)).await;
     }
 
     // Launch API with webhook endpoint

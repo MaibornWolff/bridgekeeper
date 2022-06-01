@@ -8,10 +8,10 @@ use serde_derive::{Deserialize, Serialize};
 #[kube(
     group = "bridgekeeper.maibornwolff.de",
     version = "v1alpha1",
-    kind = "Constraint"
+    kind = "Policy"
 )]
-#[kube(status = "ConstraintStatus")]
-pub struct ConstraintSpec {
+#[kube(status = "PolicyStatus")]
+pub struct PolicySpec {
     pub target: Target,
     pub rule: Rule,
     pub audit: Option<bool>,
@@ -41,7 +41,7 @@ pub struct Rule {
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct ConstraintStatus {
+pub struct PolicyStatus {
     pub audit: Option<AuditStatus>,
 }
 
@@ -59,9 +59,9 @@ pub struct Violation {
     pub message: String,
 }
 
-impl ConstraintStatus {
-    pub fn new() -> ConstraintStatus {
-        ConstraintStatus {
+impl PolicyStatus {
+    pub fn new() -> PolicyStatus {
+        PolicyStatus {
             audit: Some(AuditStatus::new()),
         }
     }
@@ -98,9 +98,9 @@ impl Target {
 }
 
 #[cfg(test)]
-impl ConstraintSpec {
-    pub fn from_target(target: Target) -> ConstraintSpec {
-        ConstraintSpec {
+impl PolicySpec {
+    pub fn from_target(target: Target) -> PolicySpec {
+        PolicySpec {
             audit: Some(false),
             enforce: Some(true),
             target,
@@ -108,8 +108,8 @@ impl ConstraintSpec {
         }
     }
 
-    pub fn from_python(python: String) -> ConstraintSpec {
-        ConstraintSpec {
+    pub fn from_python(python: String) -> PolicySpec {
+        PolicySpec {
             audit: Some(false),
             enforce: Some(true),
             target: Default::default(),
