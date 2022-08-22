@@ -1,5 +1,5 @@
 use crate::crd::Policy;
-use crate::evaluator::{PolicyEvaluatorRef, EvaluationResult};
+use crate::evaluator::{PolicyEvaluatorRef, EvaluationResult, validate_policy};
 use crate::util::cert::CertKeyPair;
 use kube::{
     api::DynamicObject,
@@ -47,14 +47,16 @@ async fn admission_mutate(
     })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let evaluator = evaluator.lock().expect("lock failed. Cannot continue");
-
+    let evaluator = evaluator.inner().clone();
     let EvaluationResult {
         allowed,
         reason,
         warnings,
         patch,
-    } = evaluator.evaluate_policies(admission_request);
+    } = tokio::task::spawn_blocking(move || {
+        evaluator.evaluate_policies(admission_request)
+    }).await.map_err(|err| ApiError::ProcessingFailure(format!("Error evaluating policies: {}", err)))?;
+
     response.allowed = allowed;
     if !warnings.is_empty() {
         response.warnings = Some(warnings);
@@ -77,9 +79,8 @@ async fn admission_mutate(
 }
 
 #[rocket::post("/validate-policy", data = "<data>")]
-async fn validate_policy(
+async fn api_validate_policy(
     data: Json<AdmissionReview<Policy>>,
-    evaluator: &State<PolicyEvaluatorRef>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, ApiError> {
     HTTP_REQUEST_COUNTER
         .with_label_values(&["/validate-policy"])
@@ -90,9 +91,7 @@ async fn validate_policy(
     })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let evaluator = evaluator.lock().expect("lock failed. Cannot continue");
-
-    let (allowed, reason) = evaluator.validate_policy(&admission_request);
+    let (allowed, reason) = validate_policy(&admission_request);
     response.allowed = allowed;
     if !allowed {
         response.result.message = reason;
@@ -143,7 +142,7 @@ pub async fn server(cert: CertKeyPair, evaluator: PolicyEvaluatorRef) {
         .manage(evaluator)
         .mount(
             "/",
-            rocket::routes![admission_mutate, validate_policy, health, metrics],
+            rocket::routes![admission_mutate, api_validate_policy, health, metrics],
         )
         .launch()
         .await

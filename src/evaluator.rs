@@ -11,7 +11,7 @@ use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
 use serde_derive::Serialize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 lazy_static! {
     static ref MATCHED_POLICIES: CounterVec = register_counter_vec!(
@@ -79,7 +79,7 @@ pub struct EvaluationResult {
     pub patch: Option<json_patch::Patch>,
 }
 
-pub type PolicyEvaluatorRef = Arc<Mutex<PolicyEvaluator>>;
+pub type PolicyEvaluatorRef = Arc<PolicyEvaluator>;
 
 impl PolicyEvaluator {
     pub fn new(
@@ -91,7 +91,7 @@ impl PolicyEvaluator {
             event_sender,
         };
         pyo3::prepare_freethreaded_python();
-        Arc::new(Mutex::new(evaluator))
+        Arc::new(evaluator)
     }
 
     pub fn evaluate_policies(
@@ -117,7 +117,10 @@ impl PolicyEvaluator {
             .policies
             .lock()
             .expect("lock failed. Cannot continue");
-        let mut patches: Option<json_patch::Patch> = None;
+
+        let mut matching_policies = Vec::new();
+
+        // Collect all matching policies
         for value in policies.policies.values() {
             if value.is_match(&gvk, &namespace) {
                 MATCHED_POLICIES
@@ -131,62 +134,71 @@ impl PolicyEvaluator {
                     name,
                     value.name
                 );
-                let target_identifier = format!(
-                    "{}/{}/{}/{}",
-                    gvk.group,
-                    gvk.kind,
-                    namespace.clone().unwrap_or_else(|| "-".to_string()),
-                    name
-                );
-                let res = evaluate_policy(value, &request);
-                if let Some(mut patch) = res.2 {
-                    if let Some(patches) = patches.as_mut() {
-                        patches.0.append(&mut patch.0);
-                    } else {
-                        patches = Some(patch);
-                    }
-                }
-                self.event_sender
-                    .send(PolicyEvent {
-                        policy_reference: value.ref_info.clone(),
-                        event_data: PolicyEventData::Evaluated {
-                            target_identifier,
-                            result: res.0,
-                            reason: res.1.clone(),
-                        },
-                    })
-                    .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
-                if res.0 {
-                    POLICY_EVALUATIONS_SUCCESS
-                        .with_label_values(&[value.name.as_str()])
-                        .inc();
-                    log::info!("Policy '{}' evaluates to {}", value.name, res.0);
-                    if let Some(warning) = res.1 {
-                        warnings.push(warning);
-                    }
+                matching_policies.push(value.clone());
+            }
+        }
+        // Release the lock
+        drop(policies);
+
+        // Evaluate policies
+        let mut patches: Option<json_patch::Patch> = None;
+        for value in matching_policies.iter() {
+            let target_identifier = format!(
+                "{}/{}/{}/{}",
+                gvk.group,
+                gvk.kind,
+                namespace.clone().unwrap_or_else(|| "-".to_string()),
+                name
+            );
+            let res = evaluate_policy(value, &request);
+            if let Some(mut patch) = res.2 {
+                if let Some(patches) = patches.as_mut() {
+                    patches.0.append(&mut patch.0);
                 } else {
-                    POLICY_EVALUATIONS_REJECT
-                        .with_label_values(&[value.name.as_str()])
-                        .inc();
-                    let reason = res.1.unwrap_or_else(|| "-".to_string());
-                    log::info!(
-                        "Policy '{}' evaluates to {} with message '{}'",
-                        value.name,
-                        res.0,
-                        reason,
-                    );
-                    if value.policy.enforce.unwrap_or(true) {
-                        // If one policy fails no need to evaluate the others
-                        return EvaluationResult {
-                            allowed: res.0,
-                            reason: Some(reason),
-                            warnings,
-                            patch: None,
-                        };
-                    } else {
-                        warnings.push(reason);
-                    }
+                    patches = Some(patch);
                 }
+            }
+            self.event_sender
+                .send(PolicyEvent {
+                    policy_reference: value.ref_info.clone(),
+                    event_data: PolicyEventData::Evaluated {
+                        target_identifier,
+                        result: res.0,
+                        reason: res.1.clone(),
+                    },
+                })
+                .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
+            if res.0 {
+                POLICY_EVALUATIONS_SUCCESS
+                    .with_label_values(&[value.name.as_str()])
+                    .inc();
+                log::info!("Policy '{}' evaluates to {}", value.name, res.0);
+                if let Some(warning) = res.1 {
+                    warnings.push(warning);
+                }
+            } else {
+                POLICY_EVALUATIONS_REJECT
+                    .with_label_values(&[value.name.as_str()])
+                    .inc();
+                let reason = res.1.unwrap_or_else(|| "-".to_string());
+                log::info!(
+                    "Policy '{}' evaluates to {} with message '{}'",
+                    value.name,
+                    res.0,
+                    reason,
+                );
+                if value.policy.enforce.unwrap_or(true) {
+                    // If one policy fails no need to evaluate the others
+                    return EvaluationResult {
+                        allowed: res.0,
+                        reason: Some(reason),
+                        warnings,
+                        patch: None,
+                    };
+                } else {
+                    warnings.push(reason);
+                }
+            
             }
         }
         EvaluationResult {
@@ -196,30 +208,30 @@ impl PolicyEvaluator {
             patch: patches,
         }
     }
+}
 
-    pub fn validate_policy(
-        &self,
-        request: &admission::AdmissionRequest<Policy>,
-    ) -> (bool, Option<String>) {
-        if let Some(policy) = request.object.as_ref() {
-            let python_code = policy.spec.rule.python.clone();
-            Python::with_gil(|py| {
-                if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
-                    let name = match policy.metadata.name.as_ref() {
-                        Some(name) => name.as_str(),
-                        None => "-invalidname-",
-                    };
-                    POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
-                    (false, Some(format!("Python compile error: {:?}", err)))
-                } else {
-                    (true, None)
-                }
-            })
-        } else {
-            (false, Some("No rule found".to_string()))
-        }
+pub fn validate_policy(
+    request: &admission::AdmissionRequest<Policy>,
+) -> (bool, Option<String>) {
+    if let Some(policy) = request.object.as_ref() {
+        let python_code = policy.spec.rule.python.clone();
+        Python::with_gil(|py| {
+            if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
+                let name = match policy.metadata.name.as_ref() {
+                    Some(name) => name.as_str(),
+                    None => "-invalidname-",
+                };
+                POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
+                (false, Some(format!("Python compile error: {:?}", err)))
+            } else {
+                (true, None)
+            }
+        })
+    } else {
+        (false, Some("No rule found".to_string()))
     }
 }
+
 
 fn evaluate_policy(
     policy: &PolicyInfo,

@@ -29,7 +29,7 @@ enum CommandEnum {
     GenCRD(helper::gencrd::Args),
 }
 
-#[tokio::main]
+#[tokio::main(flavor="multi_thread")]
 async fn main() {
     let args: MainArgs = argh::from_env();
     let log_level = match args.command {
