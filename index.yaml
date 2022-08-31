@@ -2,6 +2,15 @@ apiVersion: v1
 entries:
   bridgekeeper:
   - apiVersion: v2
+    created: "2022-08-31T13:16:58.248521224Z"
+    description: A Helm chart for bridgekeeper
+    digest: 5ed006ef5d2e4fd22fac59b276bd8edd9879f0a695475c591ab2f3c85af24288
+    name: bridgekeeper
+    type: application
+    urls:
+    - https://MaibornWolff.github.io/bridgekeeper/bridgekeeper-0.2.1.tgz
+    version: 0.2.1
+  - apiVersion: v2
     created: "2022-06-02T12:56:15.636609713Z"
     description: A Helm chart for bridgekeeper
     digest: 53c53864731cd167bf3745a716f2fc6fe5dcc47ebb52e7d3797cedfedf043c7f
@@ -19,4 +28,4 @@ entries:
     urls:
     - https://MaibornWolff.github.io/bridgekeeper/bridgekeeper-0.1.0.tgz
     version: 0.1.0
-generated: "2022-06-02T12:56:15.635958712Z"
+generated: "2022-08-31T13:16:58.247640106Z"
