@@ -106,3 +106,20 @@ subjects:
 - kind: ServiceAccount
   name: {{ include "bridgekeeper.serviceAccountName" . }}
   namespace: "{{ .Release.Namespace }}"
+---
+{{- if .Values.serviceAccount.extraClusterRole }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+  name: bridgekeeper-extrarole
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.serviceAccount.extraClusterRole }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "bridgekeeper.serviceAccountName" . }}
+  namespace: "{{ .Release.Namespace }}"
+{{- end }}

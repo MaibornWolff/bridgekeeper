@@ -1,8 +1,8 @@
 use crate::util::error::{kube_err, Result};
 use crate::{
-    policy::PolicyStoreRef,
     crd::Policy,
-    events::{PolicyEvent, PolicyEventData, EventSender},
+    events::{EventSender, PolicyEvent, PolicyEventData},
+    policy::PolicyStoreRef,
 };
 use futures::StreamExt;
 use kube::runtime::{watcher, watcher::Event};
@@ -19,11 +19,7 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub fn new(
-        client: Client,
-        policies: PolicyStoreRef,
-        event_sender: EventSender,
-    ) -> Manager {
+    pub fn new(client: Client, policies: PolicyStoreRef, event_sender: EventSender) -> Manager {
         Manager {
             k8s_client: client,
             policies,
@@ -38,10 +34,7 @@ impl Manager {
             .await
             .map_err(kube_err)?;
         {
-            let mut policies = self
-                .policies
-                .lock()
-                .expect("lock failed. Cannot continue");
+            let mut policies = self.policies.lock().expect("lock failed. Cannot continue");
             for policy in res {
                 if let Some(ref_info) = policies.add_policy(policy) {
                     self.event_sender

@@ -95,7 +95,7 @@ If the python code is not valid, raises an exception or the return value does no
 
 If the code returns a mutated object bridekeeper will calculate the diff between the input and output objects and return it with the admission response so that Kubernetes can apply the patch to the object.
 
-You can use the entire python feature set and standard library in your script (so stuff like `import re` is possible). Using threads, accessing the filesystem or using the network (e.g. via sockets) should not be done and might be prohibited in the future.
+You can use the entire python feature set and standard library in your script (so stuff like `import re` is possible). Using threads or accessing the filesystem should not be done and might be prohibited in the future. The official bridgekeeper docker image includes the [python kubernetes library](https://github.com/kubernetes-client/python) so you can use that in policies to query the Kubernetes API. Depending on which resources you want to access you might need to assign bridgekeeper an additional ClusterRole (can be done via the helm chart by setting `serviceAccount.extraClusterRole`).
 
 You can find a more useful example under [example/policy.yaml](example/policy.yaml) that denies deployments that use a docker image with a `latest` tag. Try it out using the following steps:
 

@@ -1,7 +1,7 @@
-use crate::policy::{PolicyInfo, PolicyStore, PolicyStoreRef};
 use crate::crd::{Policy, PolicyStatus, Violation};
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
+use crate::policy::{PolicyInfo, PolicyStore, PolicyStoreRef};
 use crate::util::error::{kube_err, BridgekeeperError, Result};
 use crate::util::k8s_client::{list_with_retry, patch_status_with_retry};
 use argh::FromArgs;
@@ -83,18 +83,11 @@ impl Auditor {
         }
     }
 
-    pub async fn audit_policies(
-        &self,
-        print_violations: bool,
-        update_status: bool,
-    ) -> Result<()> {
+    pub async fn audit_policies(&self, print_violations: bool, update_status: bool) -> Result<()> {
         let mut policies = Vec::new();
         // While holding the lock only collect the policies, directly auditing them would make the future of the method not implement Send which breaks the task spawn
         {
-            let policy_store = self
-                .policies
-                .lock()
-                .expect("lock failed. Cannot continue");
+            let policy_store = self.policies.lock().expect("lock failed. Cannot continue");
             for policy in policy_store.policies.values() {
                 if policy.policy.audit.unwrap_or(false) {
                     policies.push(policy.clone());
@@ -191,10 +184,7 @@ impl Auditor {
                     Some(reason) => format!(": {}", reason),
                     None => String::new(),
                 };
-                println!(
-                    "{} violates policy '{}'{}",
-                    object, policy.name, message
-                );
+                println!("{} violates policy '{}'{}", object, policy.name, message);
             }
         }
         let num_violations = results.len();

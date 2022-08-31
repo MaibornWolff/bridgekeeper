@@ -1,4 +1,4 @@
-FROM rust:1.60-alpine as builder
+FROM rust:1.63-alpine as builder
 RUN mkdir /build
 RUN apk add --no-cache musl-dev python3 python3-dev openssl openssl-dev
 ADD Cargo.toml /build/
@@ -11,6 +11,7 @@ COPY manifests /build/manifests
 RUN touch src/main.rs && cargo build --release
 RUN strip /build/target/release/bridgekeeper
 
-FROM alpine:3.15
-RUN apk add --no-cache python3 openssl libgcc
+FROM alpine:3.16
+RUN apk add --no-cache python3 openssl libgcc py3-pip
+RUN pip install kubernetes==24.2.0
 COPY --from=builder /build/target/release/bridgekeeper /usr/local/bin/

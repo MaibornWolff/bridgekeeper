@@ -3,12 +3,12 @@ use argh::FromArgs;
 mod api;
 mod audit;
 mod constants;
-mod policy;
 mod crd;
 mod evaluator;
 mod events;
 mod helper;
 mod manager;
+mod policy;
 mod server;
 mod util;
 
@@ -29,7 +29,7 @@ enum CommandEnum {
     GenCRD(helper::gencrd::Args),
 }
 
-#[tokio::main(flavor="multi_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let args: MainArgs = argh::from_env();
     let log_level = match args.command {

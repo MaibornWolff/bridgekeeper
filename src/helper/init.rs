@@ -87,8 +87,7 @@ async fn generate_and_store_certificates(
     args: &Args,
     client: &Client,
 ) -> CertKeyPair {
-    let cert =
-        crate::util::cert::gen_cert(SERVICE_NAME.to_string(), namespace, args.local.clone());
+    let cert = crate::util::cert::gen_cert(SERVICE_NAME.to_string(), namespace, args.local.clone());
     if args.local.is_some() {
         let _ = create_dir(LOCAL_CERTS_DIR);
         let mut cert_file = File::create(Path::new(LOCAL_CERTS_DIR).join(CERT_FILENAME))

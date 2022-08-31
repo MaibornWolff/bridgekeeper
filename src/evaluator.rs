@@ -1,7 +1,7 @@
 use crate::{
-    policy::{PolicyInfo, PolicyStoreRef},
     crd::Policy,
-    events::{PolicyEvent, PolicyEventData, EventSender},
+    events::{EventSender, PolicyEvent, PolicyEventData},
+    policy::{PolicyInfo, PolicyStoreRef},
 };
 use kube::core::{
     admission::{self, Operation},
@@ -82,10 +82,7 @@ pub struct EvaluationResult {
 pub type PolicyEvaluatorRef = Arc<PolicyEvaluator>;
 
 impl PolicyEvaluator {
-    pub fn new(
-        policies: PolicyStoreRef,
-        event_sender: EventSender,
-    ) -> PolicyEvaluatorRef {
+    pub fn new(policies: PolicyStoreRef, event_sender: EventSender) -> PolicyEvaluatorRef {
         let evaluator = PolicyEvaluator {
             policies: policies,
             event_sender,
@@ -113,10 +110,7 @@ impl PolicyEvaluator {
                 }
             }
         };
-        let policies = self
-            .policies
-            .lock()
-            .expect("lock failed. Cannot continue");
+        let policies = self.policies.lock().expect("lock failed. Cannot continue");
 
         let mut matching_policies = Vec::new();
 
@@ -198,7 +192,6 @@ impl PolicyEvaluator {
                 } else {
                     warnings.push(reason);
                 }
-            
             }
         }
         EvaluationResult {
@@ -210,9 +203,7 @@ impl PolicyEvaluator {
     }
 }
 
-pub fn validate_policy(
-    request: &admission::AdmissionRequest<Policy>,
-) -> (bool, Option<String>) {
+pub fn validate_policy(request: &admission::AdmissionRequest<Policy>) -> (bool, Option<String>) {
     if let Some(policy) = request.object.as_ref() {
         let python_code = policy.spec.rule.python.clone();
         Python::with_gil(|py| {
@@ -232,7 +223,6 @@ pub fn validate_policy(
     }
 }
 
-
 fn evaluate_policy(
     policy: &PolicyInfo,
     request: &ValidationRequest,
@@ -243,12 +233,9 @@ fn evaluate_policy(
             Ok(obj) => obj,
             Err(err) => return fail(name, &format!("Failed to initialize python: {}", err)),
         };
-        if let Ok(rule_code) = PyModule::from_code(
-            py,
-            &policy.policy.rule.python,
-            "rule.py",
-            "bridgekeeper",
-        ) {
+        if let Ok(rule_code) =
+            PyModule::from_code(py, &policy.policy.rule.python, "rule.py", "bridgekeeper")
+        {
             if let Ok(validation_function) = rule_code.getattr("validate") {
                 match validation_function.call1((obj,)) {
                     Ok(result) => extract_result(name, request, result),
@@ -301,9 +288,7 @@ fn extract_result(
 }
 
 fn fail(name: &str, reason: &str) -> (bool, Option<String>, Option<json_patch::Patch>) {
-    POLICY_EVALUATIONS_ERROR
-        .with_label_values(&[name])
-        .inc();
+    POLICY_EVALUATIONS_ERROR.with_label_values(&[name]).inc();
     (false, Some(reason.to_string()), None)
 }
 
@@ -332,8 +317,7 @@ def validate(request):
     return True
         "#;
         let policy_spec = PolicySpec::from_python(python.to_string());
-        let policy =
-            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
+        let policy = PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let object = DynamicObject {
             types: None,
@@ -359,8 +343,7 @@ def validate(request):
     return False, "foobar"
         "#;
         let policy_spec = PolicySpec::from_python(python.to_string());
-        let policy =
-            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
+        let policy = PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let object = DynamicObject {
             types: None,
@@ -387,8 +370,7 @@ def validate(request):
     return false, "foobar"
         "#;
         let policy_spec = PolicySpec::from_python(python.to_string());
-        let policy =
-            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
+        let policy = PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let object = DynamicObject {
             types: None,
@@ -420,8 +402,7 @@ def validate(request):
     return True, None, object
         "#;
         let policy_spec = PolicySpec::from_python(python.to_string());
-        let policy =
-            PolicyInfo::new("test".to_string(), policy_spec, Default::default());
+        let policy = PolicyInfo::new("test".to_string(), policy_spec, Default::default());
 
         let data = serde_json::from_str(r#"{"a": 1, "b": "1"}"#).unwrap();
         let object = DynamicObject {

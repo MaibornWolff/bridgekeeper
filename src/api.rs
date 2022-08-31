@@ -1,5 +1,5 @@
 use crate::crd::Policy;
-use crate::evaluator::{PolicyEvaluatorRef, EvaluationResult, validate_policy};
+use crate::evaluator::{validate_policy, EvaluationResult, PolicyEvaluatorRef};
 use crate::util::cert::CertKeyPair;
 use kube::{
     api::DynamicObject,
@@ -53,9 +53,11 @@ async fn admission_mutate(
         reason,
         warnings,
         patch,
-    } = tokio::task::spawn_blocking(move || {
-        evaluator.evaluate_policies(admission_request)
-    }).await.map_err(|err| ApiError::ProcessingFailure(format!("Error evaluating policies: {}", err)))?;
+    } = tokio::task::spawn_blocking(move || evaluator.evaluate_policies(admission_request))
+        .await
+        .map_err(|err| {
+            ApiError::ProcessingFailure(format!("Error evaluating policies: {}", err))
+        })?;
 
     response.allowed = allowed;
     if !warnings.is_empty() {

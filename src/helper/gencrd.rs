@@ -16,8 +16,8 @@ pub struct Args {
 }
 
 pub fn run(args: Args) {
-    let data = serde_yaml::to_string(&Policy::crd())
-        .expect("Could not generate yaml from CRD definition");
+    let data =
+        serde_yaml::to_string(&Policy::crd()).expect("Could not generate yaml from CRD definition");
     let filepath = args.file.unwrap_or_else(|| CRD_FILEPATH.to_string());
     let wrapped_data = "{{- if .Values.installCRDs }}\n".to_string() + &data + "{{- end }}\n";
     if filepath == "-" {
@@ -32,5 +32,4 @@ pub fn run(args: Args) {
         )
         .expect("Unable to write crd yaml");
     }
-
 }

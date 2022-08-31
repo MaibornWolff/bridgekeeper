@@ -8,11 +8,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
-    static ref ACTIVE_POLICIES: Gauge = register_gauge!(
-        "bridgekeeper_policies_active",
-        "Number of active policies."
-    )
-    .expect("creating metric always works");
+    static ref ACTIVE_POLICIES: Gauge =
+        register_gauge!("bridgekeeper_policies_active", "Number of active policies.")
+            .expect("creating metric always works");
 }
 
 pub struct PolicyStore {
@@ -67,11 +65,7 @@ fn create_object_reference(obj: &Policy) -> PolicyObjectReference {
 }
 
 impl PolicyInfo {
-    pub fn new(
-        name: String,
-        policy: PolicySpec,
-        ref_info: PolicyObjectReference,
-    ) -> PolicyInfo {
+    pub fn new(name: String, policy: PolicySpec, ref_info: PolicyObjectReference) -> PolicyInfo {
         PolicyInfo {
             name,
             policy,
@@ -123,8 +117,7 @@ impl PolicyStore {
         let name = policy.metadata.name.expect("name is always set");
         if let Some(existing_policy_info) = self.policies.get(&name) {
             if existing_policy_info.policy != policy.spec {
-                let policy_info =
-                    PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
+                let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
                 log::info!("Policy '{}' updated", name);
                 self.policies.insert(name, policy_info);
                 Some(ref_info)
@@ -132,8 +125,7 @@ impl PolicyStore {
                 None
             }
         } else {
-            let policy_info =
-                PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
+            let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
             log::info!("Policy '{}' added", name);
             self.policies.insert(name, policy_info);
             ACTIVE_POLICIES.inc();
