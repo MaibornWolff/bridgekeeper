@@ -13,5 +13,7 @@ RUN strip /build/target/release/bridgekeeper
 
 FROM alpine:3.16
 RUN apk add --no-cache python3 openssl libgcc py3-pip
+RUN addgroup -g 1000 bridgekeeper && adduser -u 1000 -G bridgekeeper -D bridgekeeper
 RUN pip install kubernetes==24.2.0
-COPY --from=builder /build/target/release/bridgekeeper /usr/local/bin/
+COPY --from=builder --chown=1000:1000 /build/target/release/bridgekeeper /usr/local/bin/
+USER 1000:1000
