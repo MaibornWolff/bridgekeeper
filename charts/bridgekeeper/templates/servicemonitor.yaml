@@ -1,0 +1,20 @@
+{{- if .Values.prometheus.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bridgekeeper
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "bridgekeeper.selectorLabels" . | nindent 6 }}
+  endpoints:
+  - port: http
+    interval: {{ .Values.prometheus.interval | default "30s" }}
+    path: "/metrics"
+    scheme: HTTPS
+    tlsConfig:
+      insecureSkipVerify: true
+{{- end }}

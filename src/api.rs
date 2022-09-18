@@ -1,5 +1,5 @@
 use crate::crd::Policy;
-use crate::evaluator::{validate_policy, EvaluationResult, PolicyEvaluatorRef};
+use crate::evaluator::{validate_policy_admission, EvaluationResult, PolicyEvaluatorRef};
 use crate::util::cert::CertKeyPair;
 use kube::{
     api::DynamicObject,
@@ -93,7 +93,7 @@ async fn api_validate_policy(
     })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let (allowed, reason) = validate_policy(&admission_request);
+    let (allowed, reason) = validate_policy_admission(&admission_request);
     response.allowed = allowed;
     if !allowed {
         response.result.message = reason;

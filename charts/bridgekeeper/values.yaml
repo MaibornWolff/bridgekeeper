@@ -54,6 +54,12 @@ tolerations: []
 
 affinity: {}
 
+prometheus:
+  # Set to true to deploy a ServiceMonitor to have bridgekeeper deployment scraped for metrics
+  enabled: false
+  # Scrape internval
+  interval: 30s
+
 bridgekeeper:
   # namespaces to ignore for validation
   ignoreNamespaces:
@@ -69,3 +75,14 @@ bridgekeeper:
     enabled: false
     # Audit interval in seconds
     interval: 600
+  audit_cronjob:
+    # Set this to true if you want bridgekeeper to run regular audits as a cronjob (only this or audit.enabled should be set to true)
+    enabled: false
+    # Set to true to have bridgekeeper update the Policy object status with a list of violations
+    update_status: true
+    # Cron schedule when to run the audits 
+    schedule: "*/30 * * * *"  # default: every 30 minutes
+    # URL of the Prometheus Pushgateway to send metrics to, leave empty to disable. Example: http://pushgateway.default.svc.cluster.local:9091
+    pushgateway_url: ""
+    # CPU and memory resource requests and limits, if not set defaults to that of main deployment
+    resources: {}

@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub enum BridgekeeperError {
     KubernetesError(String),
+    LoadPolicyError(String),
 }
 
 pub type Result<T> = std::result::Result<T, BridgekeeperError>;
@@ -10,6 +11,9 @@ impl std::fmt::Display for BridgekeeperError {
         match self {
             BridgekeeperError::KubernetesError(reason) => {
                 f.write_fmt(format_args!("KubernetesError: {}", reason))
+            },
+            BridgekeeperError::LoadPolicyError(reason) => {
+                f.write_fmt(format_args!("LoadPolicyError: {}", reason))
             }
         }
     }
@@ -17,4 +21,8 @@ impl std::fmt::Display for BridgekeeperError {
 
 pub fn kube_err<T: std::fmt::Display>(err: T) -> BridgekeeperError {
     return BridgekeeperError::KubernetesError(format!("{}", err));
+}
+
+pub fn load_err<T: std::fmt::Display>(err: T) -> BridgekeeperError {
+    return BridgekeeperError::LoadPolicyError(format!("{}", err));
 }

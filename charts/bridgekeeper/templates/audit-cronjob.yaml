@@ -1,0 +1,50 @@
+{{- if .Values.bridgekeeper.audit_cronjob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bridgekeeper-audit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bridgekeeper.labels" . | nindent 4 }}
+spec:
+  schedule: "{{ .Values.bridgekeeper.audit_cronjob.schedule }}"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          {{- with .Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          labels:
+            {{- include "bridgekeeper.selectorLabels" . | nindent 12 }}
+        spec:
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "bridgekeeper.serviceAccountName" . }}
+          automountServiceAccountToken: true
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ .Chart.Name }}-audit
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - bridgekeeper
+              args:
+                - audit
+                {{- if .Values.bridgekeeper.audit_cronjob.update_status }}
+                - --status
+                {{- end }}
+              resources:
+                {{- toYaml .Values.bridgekeeper.audit_cronjob.resources | default .Values.resources | nindent 16 }}
+              env:
+                - name: PUSHGATEWAY_URL
+                  value: "{{ .Values.bridgekeeper.audit_cronjob.pushgateway_url }}"
+          restartPolicy: OnFailure
+{{- end }}

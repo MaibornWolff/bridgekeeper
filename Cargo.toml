@@ -28,6 +28,7 @@ lazy_static = "1.4.0"
 prometheus = {version = "0.13.1", features = ["process"]}
 json-patch = "0.2.6"
 exponential-backoff = "1.1.0"
+reqwest = {version="0.11.11"}
 
 
 [profile.release]

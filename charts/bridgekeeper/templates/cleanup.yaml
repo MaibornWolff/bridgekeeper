@@ -3,6 +3,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: "bridgekeeper-cleanup"
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "bridgekeeper.labels" . | nindent 4 }}
   annotations:

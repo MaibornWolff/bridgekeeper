@@ -1,5 +1,5 @@
 use crate::{
-    crd::Policy,
+    crd::{Policy, PolicySpec},
     events::{EventSender, PolicyEvent, PolicyEventData},
     policy::{PolicyInfo, PolicyStoreRef},
 };
@@ -203,24 +203,28 @@ impl PolicyEvaluator {
     }
 }
 
-pub fn validate_policy(request: &admission::AdmissionRequest<Policy>) -> (bool, Option<String>) {
+pub fn validate_policy_admission(request: &admission::AdmissionRequest<Policy>) -> (bool, Option<String>) {
     if let Some(policy) = request.object.as_ref() {
-        let python_code = policy.spec.rule.python.clone();
-        Python::with_gil(|py| {
-            if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
-                let name = match policy.metadata.name.as_ref() {
-                    Some(name) => name.as_str(),
-                    None => "-invalidname-",
-                };
-                POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
-                (false, Some(format!("Python compile error: {:?}", err)))
-            } else {
-                (true, None)
-            }
-        })
+        let name = match policy.metadata.name.as_ref() {
+            Some(name) => name.as_str(),
+            None => "-invalidname-",
+        };
+        validate_policy(name, &policy.spec)
     } else {
         (false, Some("No rule found".to_string()))
     }
+}
+
+pub fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<String>) {
+    let python_code = policy.rule.python.clone();
+    Python::with_gil(|py| {
+        if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
+            POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
+            (false, Some(format!("Python compile error: {:?}", err)))
+        } else {
+            (true, None)
+        }
+    })
 }
 
 fn evaluate_policy(
@@ -233,19 +237,21 @@ fn evaluate_policy(
             Ok(obj) => obj,
             Err(err) => return fail(name, &format!("Failed to initialize python: {}", err)),
         };
-        if let Ok(rule_code) =
-            PyModule::from_code(py, &policy.policy.rule.python, "rule.py", "bridgekeeper")
-        {
-            if let Ok(validation_function) = rule_code.getattr("validate") {
-                match validation_function.call1((obj,)) {
-                    Ok(result) => extract_result(name, request, result),
-                    Err(err) => fail(name, &format!("Validation function failed: {}", err)),
+
+        match PyModule::from_code(py, &policy.policy.rule.python, "rule.py", "bridgekeeper") {
+            Ok(rule_code) => {
+                if let Ok(validation_function) = rule_code.getattr("validate") {
+                    match validation_function.call1((obj,)) {
+                        Ok(result) => extract_result(name, request, result),
+                        Err(err) => fail(name, &format!("Validation function failed: {}", err)),
+                    }
+                } else {
+                    fail(name, "Validation function not found in code")
                 }
-            } else {
-                fail(name, "Validation function not found in code")
+            },
+            Err(err) => {
+                fail(name, format!("Validation function could not be compiled: {}", err).as_str())
             }
-        } else {
-            fail(name, "Validation function could not be compiled")
         }
     })
 }

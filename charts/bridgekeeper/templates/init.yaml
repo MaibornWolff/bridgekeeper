@@ -3,6 +3,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ include "bridgekeeper.serviceAccountName" . }}-init
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "bridgekeeper.labels" . | nindent 4 }}
   annotations:
@@ -54,7 +55,7 @@ metadata:
     "helm.sh/hook-weight": "3"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
   name: bridgekeeper-init-role
-  namespace: "{{ .Release.Namespace }}"
+  namespace: {{ .Release.Namespace }}
 rules:
 # The init job creates a secret with the TLS certificate, the main program needs to read it
 - apiGroups:
@@ -99,7 +100,7 @@ metadata:
     "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
   name: bridgekeeper-init-rolebinding
-  namespace: "{{ .Release.Namespace }}"
+  namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -113,6 +114,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: "bridgekeeper-init"
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "bridgekeeper.labels" . | nindent 4 }}
   annotations:
@@ -123,6 +125,7 @@ spec:
   template:
     metadata:
       name: "bridgekeeper-init"
+      namespace: {{ .Release.Namespace }}
       labels:
         {{- include "bridgekeeper.selectorLabels" . | nindent 8 }}
     spec:

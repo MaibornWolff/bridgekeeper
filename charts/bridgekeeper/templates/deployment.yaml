@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: bridgekeeper
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "bridgekeeper.labels" . | nindent 4 }}
 spec:
