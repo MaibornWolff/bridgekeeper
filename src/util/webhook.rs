@@ -15,6 +15,7 @@ pub async fn create_admission_webhook(
     cert: &CertKeyPair,
     local: &Option<String>,
     strict_admission: bool,
+    timeout_seconds: Option<u8>
 ) -> Result<()> {
     let webhook_data = if local.is_some() {
         Assets::get("admission-controller-local.yaml")
@@ -32,6 +33,7 @@ pub async fn create_admission_webhook(
         cert,
         local,
         strict_admission,
+        timeout_seconds.unwrap_or(5)
     )
     .await
     {
@@ -62,6 +64,7 @@ pub async fn create_policy_validation_webhook(
         cert,
         local,
         strict_admission,
+        5
     )
     .await
     {
@@ -77,6 +80,7 @@ async fn apply_webhook<T: Resource>(
     cert: &CertKeyPair,
     local: &Option<String>,
     strict_admission: bool,
+    mut timeout_seconds: u8,
 ) -> kube::Result<T>
 where
     <T as Resource>::DynamicType: Default,
@@ -85,12 +89,16 @@ where
     T: DeserializeOwned,
     T: std::fmt::Debug,
 {
+    if timeout_seconds > 30 {
+        timeout_seconds = 30;
+    }
     let failure_policy = if strict_admission { "Fail" } else { "Ignore" };
     let namespace = std::env::var("NAMESPACE").unwrap_or_else(|_| "default".into());
     let mut webhook_data = webhook_data
         .replace("<cadata>", &base64::encode(cert.cert.clone()))
         .replace("<namespace>", &namespace)
-        .replace("<failure_policy>", failure_policy);
+        .replace("<failure_policy>", failure_policy)
+        .replace("<timeout_seconds>", timeout_seconds.to_string().as_str());
     if let Some(local_name) = local {
         webhook_data =
             webhook_data.replace("<host>", &local_name.to_lowercase().replace("ip:", ""));

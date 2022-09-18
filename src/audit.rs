@@ -146,6 +146,10 @@ impl Auditor {
             if *namespaced {
                 for namespace in namespaces.iter() {
                     if policy.is_namespace_match(namespace) {
+                        // Initialize metrics
+                        let _ = NUM_VIOLATIONS.get_metric_with_label_values(&[policy.name.as_str(), namespace.as_str()]);
+                        let _ = NUM_CHECKED_OBJECTS.get_metric_with_label_values(&[policy.name.as_str(), namespace.as_str()]);
+                        // Retrieve objects
                         let api = Api::<DynamicObject>::namespaced_with(
                             self.k8s_client.clone(),
                             namespace,
@@ -168,6 +172,10 @@ impl Auditor {
                     }
                 }
             } else {
+                // Initialize metrics
+                let _ = NUM_VIOLATIONS.get_metric_with_label_values(&[policy.name.as_str(), ""]);
+                let _ = NUM_CHECKED_OBJECTS.get_metric_with_label_values(&[policy.name.as_str(), ""]);
+                // Retrieve objects
                 let api =
                     Api::<DynamicObject>::all_with(self.k8s_client.clone(), resource_description);
                 let objects = match list_with_retry(&api, ListParams::default()).await {

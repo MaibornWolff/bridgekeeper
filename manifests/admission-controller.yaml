@@ -23,4 +23,4 @@ webhooks:
     failurePolicy: <failure_policy>
     admissionReviewVersions: ["v1"]
     sideEffects: None
-    timeoutSeconds: 5
+    timeoutSeconds: <timeout_seconds>

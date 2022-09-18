@@ -22,6 +22,9 @@ pub struct Args {
     /// whether or not to fail admission requests when bridgekeeper fails or is not reachable
     #[argh(switch)]
     strict_admission: bool,
+    /// timeout in seconds for admission requests, defaults to 5 seconds, maximum 30 seconds
+    #[argh(option)]
+    admission_timeout_seconds: Option<u8>,
     /// run in local mode, value is target for the webhook, e.g. host.k3d.internal:8081, if you use an ip specify as IP:192.168.1.1:8081
     #[argh(option)]
     local: Option<String>,
@@ -41,6 +44,7 @@ pub async fn run(args: Args) {
         &cert,
         &args.local,
         args.strict_admission,
+        args.admission_timeout_seconds
     )
     .await;
 

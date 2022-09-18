@@ -70,6 +70,9 @@ bridgekeeper:
   runInit: true
   # If set to true any requests in non-ignored namespaces will fail while bridgekeeper is not available (sets failure policy to "Fail")
   strictAdmission: false
+  # Timeout in seconds for admission requests (if strictAdmission false requests will be allowed after timeout, otherwise rejected), defaults to 5 seconds
+  # Maximum allowed value is 30 seconds
+  admissionTimeoutSeconds: ""
   audit: 
     # Set this to true if you want bridgekeeper to run regular audits
     enabled: false

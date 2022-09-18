@@ -45,6 +45,10 @@ spec:
             - "--audit-interval"
             - "{{ .Values.bridgekeeper.audit.interval }}"
             {{- end }}
+            {{- if .Values.bridgekeeper.admissionTimeoutSeconds }}
+            - "--admission-timeout-seconds"
+            - "{{ .Values.bridgekeeper.admissionTimeoutSeconds }}"
+            {{- end }}
           env:
             - name: NAMESPACE
               valueFrom:
