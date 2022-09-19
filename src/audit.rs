@@ -1,8 +1,8 @@
 use crate::crd::{Policy, PolicyStatus, Violation};
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
-use crate::policy::{PolicyInfo, PolicyStore, PolicyStoreRef, load_policies_from_file};
-use crate::util::error::{kube_err, BridgekeeperError, Result, load_err};
+use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStoreRef};
+use crate::util::error::{kube_err, load_err, BridgekeeperError, Result};
 use crate::util::k8s_client::{list_with_retry, patch_status_with_retry};
 use argh::FromArgs;
 use k8s_openapi::api::core::v1::Namespace;
@@ -15,7 +15,9 @@ use kube::{
 };
 use lazy_static::lazy_static;
 use prometheus::proto::MetricFamily;
-use prometheus::{register_counter, register_gauge, register_gauge_vec, Counter, Gauge, GaugeVec, Encoder};
+use prometheus::{
+    register_counter, register_gauge, register_gauge_vec, Counter, Encoder, Gauge, GaugeVec,
+};
 use serde_json::json;
 use std::time::SystemTime;
 use tokio::task;
@@ -54,7 +56,7 @@ lazy_static! {
     .expect("creating metric always works");
 }
 
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "audit")]
 /// Audit existing policies
 pub struct Args {
@@ -68,8 +70,8 @@ pub struct Args {
     #[argh(switch)]
     all: bool,
     /// load policies from file instead of from kubernetes
-    #[argh(option, short='f')]
-    file: Vec<String>
+    #[argh(option, short = 'f')]
+    file: Vec<String>,
 }
 
 pub struct Auditor {
@@ -92,7 +94,12 @@ impl Auditor {
         }
     }
 
-    pub async fn audit_policies(&self, print_violations: bool, update_status: bool, all: bool) -> Result<()> {
+    pub async fn audit_policies(
+        &self,
+        print_violations: bool,
+        update_status: bool,
+        all: bool,
+    ) -> Result<()> {
         let mut policies = Vec::new();
         // While holding the lock only collect the policies, directly auditing them would make the future of the method not implement Send which breaks the task spawn
         {
@@ -106,8 +113,9 @@ impl Auditor {
         for policy in policies.iter() {
             if let Err(err) = self
                 .audit_policy(policy, print_violations, update_status)
-                .await {
-                return Err(err)
+                .await
+            {
+                return Err(err);
             }
         }
         let now: DateTime<Utc> = SystemTime::now().into();
@@ -126,7 +134,10 @@ impl Auditor {
         println!("Auditing policy {}", policy.name);
         let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy);
         if !valid {
-            println!("Failed to validate policy: {}", reason.unwrap_or_else(||"N/A".to_string()));
+            println!(
+                "Failed to validate policy: {}",
+                reason.unwrap_or_else(|| "N/A".to_string())
+            );
             return Err(load_err("Policy is invalid"));
         }
         // collect all matching k8s resources
@@ -147,8 +158,14 @@ impl Auditor {
                 for namespace in namespaces.iter() {
                     if policy.is_namespace_match(namespace) {
                         // Initialize metrics
-                        let _ = NUM_VIOLATIONS.get_metric_with_label_values(&[policy.name.as_str(), namespace.as_str()]);
-                        let _ = NUM_CHECKED_OBJECTS.get_metric_with_label_values(&[policy.name.as_str(), namespace.as_str()]);
+                        let _ = NUM_VIOLATIONS.get_metric_with_label_values(&[
+                            policy.name.as_str(),
+                            namespace.as_str(),
+                        ]);
+                        let _ = NUM_CHECKED_OBJECTS.get_metric_with_label_values(&[
+                            policy.name.as_str(),
+                            namespace.as_str(),
+                        ]);
                         // Retrieve objects
                         let api = Api::<DynamicObject>::namespaced_with(
                             self.k8s_client.clone(),
@@ -163,9 +180,13 @@ impl Auditor {
                                 gen_target_identifier(resource_description, &object);
                             let (result, message, _patch) =
                                 crate::evaluator::evaluate_policy_audit(policy, object);
-                            NUM_CHECKED_OBJECTS.with_label_values(&[policy.name.as_str(), namespace.as_str()]).inc();
+                            NUM_CHECKED_OBJECTS
+                                .with_label_values(&[policy.name.as_str(), namespace.as_str()])
+                                .inc();
                             if !result {
-                                NUM_VIOLATIONS.with_label_values(&[policy.name.as_str(), namespace.as_str()]).inc();
+                                NUM_VIOLATIONS
+                                    .with_label_values(&[policy.name.as_str(), namespace.as_str()])
+                                    .inc();
                                 results.push((target_identifier, message));
                             }
                         }
@@ -174,7 +195,8 @@ impl Auditor {
             } else {
                 // Initialize metrics
                 let _ = NUM_VIOLATIONS.get_metric_with_label_values(&[policy.name.as_str(), ""]);
-                let _ = NUM_CHECKED_OBJECTS.get_metric_with_label_values(&[policy.name.as_str(), ""]);
+                let _ =
+                    NUM_CHECKED_OBJECTS.get_metric_with_label_values(&[policy.name.as_str(), ""]);
                 // Retrieve objects
                 let api =
                     Api::<DynamicObject>::all_with(self.k8s_client.clone(), resource_description);
@@ -186,9 +208,13 @@ impl Auditor {
                     let target_identifier = gen_target_identifier(resource_description, &object);
                     let (result, message, _patch) =
                         crate::evaluator::evaluate_policy_audit(policy, object);
-                    NUM_CHECKED_OBJECTS.with_label_values(&[policy.name.as_str(), ""]).inc();
+                    NUM_CHECKED_OBJECTS
+                        .with_label_values(&[policy.name.as_str(), ""])
+                        .inc();
                     if !result {
-                        NUM_VIOLATIONS.with_label_values(&[policy.name.as_str(), ""]).inc();
+                        NUM_VIOLATIONS
+                            .with_label_values(&[policy.name.as_str(), ""])
+                            .inc();
                         results.push((target_identifier, message));
                     }
                 }
@@ -379,7 +405,6 @@ async fn namespaces(k8s_client: Client) -> Result<Vec<String>> {
     Ok(namespaces)
 }
 
-
 pub async fn run(args: Args) {
     // First reset metrics
     NUM_VIOLATIONS.reset();
@@ -393,7 +418,7 @@ pub async fn run(args: Args) {
     let policies = PolicyStore::new();
     let event_sender = init_event_watcher(&client);
     // Load policies either from kubernetes or from file
-    if args.file.len() > 0 {
+    if !args.file.is_empty() {
         for filename in args.file.iter() {
             load_policies_from_file(policies.clone(), filename).expect("failed to load policy");
         }
@@ -406,18 +431,20 @@ pub async fn run(args: Args) {
     }
     // Run audit
     let auditor = Auditor::new(client, policies);
-    match auditor.audit_policies(!args.silent, args.status, args.all).await {
+    match auditor
+        .audit_policies(!args.silent, args.status, args.all)
+        .await
+    {
         Ok(_) => {
             log::info!("Finished audit");
             LAST_AUDIT_RUN_SUCCESSFUL.set(1.0);
-        },
+        }
         Err(err) => log::error!("Audit failed: {}", err),
     };
-    
+
     // Push metrics
     let metric_families = prometheus::gather();
     push_metrics(metric_families).await;
-    
 }
 
 pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interval: u32) {
@@ -434,7 +461,6 @@ pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interva
     });
 }
 
-
 async fn push_metrics(metric_families: Vec<MetricFamily>) {
     let url = match std::env::var("PUSHGATEWAY_URL") {
         Ok(url) => {
@@ -442,13 +468,12 @@ async fn push_metrics(metric_families: Vec<MetricFamily>) {
                 return;
             }
             url
-        },
-        Err(_) => return
+        }
+        Err(_) => return,
     };
     let encoder = prometheus::TextEncoder::new();
     let mut buffer = vec![];
-    encoder
-        .encode(&metric_families, &mut buffer).unwrap();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
     let body = String::from_utf8(buffer).unwrap();
 
     let client = reqwest::Client::new();
@@ -457,8 +482,7 @@ async fn push_metrics(metric_families: Vec<MetricFamily>) {
         .body(body)
         .send()
         .await;
-        if let Err(err) = result {
-            log::error!("Failed to send metrics to pushgateway at {}: {}", url, err);
-        }
+    if let Err(err) = result {
+        log::error!("Failed to send metrics to pushgateway at {}: {}", url, err);
+    }
 }
-

@@ -1,14 +1,13 @@
 use crate::crd::{Policy, PolicySpec};
-use crate::util::error::{Result, load_err};
+use crate::util::error::{load_err, Result};
 use k8s_openapi::api::core::v1::ObjectReference as KubeObjectReference;
 use kube::api::GroupVersionKind;
 use kube::core::Resource;
 use lazy_static::lazy_static;
 use prometheus::{register_gauge, Gauge};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use serde::Deserialize;
-
 
 lazy_static! {
     static ref ACTIVE_POLICIES: Gauge =
@@ -113,7 +112,6 @@ impl PolicyInfo {
         }
     }
 }
-
 
 impl PolicyStore {
     pub fn add_policy(&mut self, policy: Policy) -> Option<PolicyObjectReference> {

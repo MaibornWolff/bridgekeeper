@@ -6,7 +6,7 @@ use k8s_openapi::api::{
 };
 use kube::{api::Api, Client};
 
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "cleanup")]
 /// Delete cert secret and webhook
 pub struct Args {

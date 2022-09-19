@@ -3,7 +3,7 @@ use argh::FromArgs;
 use kube::CustomResourceExt;
 use std::fs;
 
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "gencrd")]
 /// Generate crd yaml
 pub struct Args {

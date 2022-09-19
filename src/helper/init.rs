@@ -15,7 +15,7 @@ use std::{
     path::Path,
 };
 
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "init")]
 /// create server cert secret and webhook
 pub struct Args {

@@ -6,7 +6,7 @@ use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use crate::policy::PolicyStore;
 
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "server")]
 /// run server with admission webhook endpoint
 pub struct Args {
@@ -44,7 +44,7 @@ pub async fn run(args: Args) {
         &cert,
         &args.local,
         args.strict_admission,
-        args.admission_timeout_seconds
+        args.admission_timeout_seconds,
     )
     .await;
 

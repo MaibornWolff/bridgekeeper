@@ -15,7 +15,7 @@ pub async fn create_admission_webhook(
     cert: &CertKeyPair,
     local: &Option<String>,
     strict_admission: bool,
-    timeout_seconds: Option<u8>
+    timeout_seconds: Option<u8>,
 ) -> Result<()> {
     let webhook_data = if local.is_some() {
         Assets::get("admission-controller-local.yaml")
@@ -33,7 +33,7 @@ pub async fn create_admission_webhook(
         cert,
         local,
         strict_admission,
-        timeout_seconds.unwrap_or(5)
+        timeout_seconds.unwrap_or(5),
     )
     .await
     {
@@ -64,7 +64,7 @@ pub async fn create_policy_validation_webhook(
         cert,
         local,
         strict_admission,
-        5
+        5,
     )
     .await
     {

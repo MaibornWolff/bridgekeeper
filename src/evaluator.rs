@@ -84,7 +84,7 @@ pub type PolicyEvaluatorRef = Arc<PolicyEvaluator>;
 impl PolicyEvaluator {
     pub fn new(policies: PolicyStoreRef, event_sender: EventSender) -> PolicyEvaluatorRef {
         let evaluator = PolicyEvaluator {
-            policies: policies,
+            policies,
             event_sender,
         };
         pyo3::prepare_freethreaded_python();
@@ -203,7 +203,9 @@ impl PolicyEvaluator {
     }
 }
 
-pub fn validate_policy_admission(request: &admission::AdmissionRequest<Policy>) -> (bool, Option<String>) {
+pub fn validate_policy_admission(
+    request: &admission::AdmissionRequest<Policy>,
+) -> (bool, Option<String>) {
     if let Some(policy) = request.object.as_ref() {
         let name = match policy.metadata.name.as_ref() {
             Some(name) => name.as_str(),
@@ -248,10 +250,11 @@ fn evaluate_policy(
                 } else {
                     fail(name, "Validation function not found in code")
                 }
-            },
-            Err(err) => {
-                fail(name, format!("Validation function could not be compiled: {}", err).as_str())
             }
+            Err(err) => fail(
+                name,
+                format!("Validation function could not be compiled: {}", err).as_str(),
+            ),
         }
     })
 }
