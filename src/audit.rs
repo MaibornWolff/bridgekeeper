@@ -22,6 +22,7 @@ use serde_json::json;
 use std::time::SystemTime;
 use tokio::task;
 use tokio::time::{sleep, Duration};
+use tracing::{info, error};
 
 lazy_static! {
     static ref NUM_AUDIT_RUNS: Counter =
@@ -436,10 +437,10 @@ pub async fn run(args: Args) {
         .await
     {
         Ok(_) => {
-            log::info!("Finished audit");
+            info!("Finished audit");
             LAST_AUDIT_RUN_SUCCESSFUL.set(1.0);
         }
-        Err(err) => log::error!("Audit failed: {}", err),
+        Err(err) => error!("Audit failed: {}", err),
     };
 
     // Push metrics
@@ -452,10 +453,10 @@ pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interva
         let auditor = Auditor::new(client, policies);
         loop {
             sleep(Duration::from_secs(interval as u64)).await;
-            log::info!("Starting audit run");
+            info!("Starting audit run");
             match auditor.audit_policies(false, true, false).await {
-                Ok(_) => log::info!("Finished audit run"),
-                Err(err) => log::error!("Audit run failed: {}", err),
+                Ok(_) => info!("Finished audit run"),
+                Err(err) => error!("Audit run failed: {}", err),
             }
         }
     });
@@ -483,6 +484,6 @@ async fn push_metrics(metric_families: Vec<MetricFamily>) {
         .send()
         .await;
     if let Err(err) = result {
-        log::error!("Failed to send metrics to pushgateway at {}: {}", url, err);
+        error!("Failed to send metrics to pushgateway at {}: {}", url, err);
     }
 }

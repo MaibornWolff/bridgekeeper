@@ -12,6 +12,7 @@ use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
 use serde_derive::Serialize;
 use std::sync::Arc;
+use tracing::{info, warn};
 
 lazy_static! {
     static ref MATCHED_POLICIES: CounterVec = register_counter_vec!(
@@ -120,7 +121,7 @@ impl PolicyEvaluator {
                 MATCHED_POLICIES
                     .with_label_values(&[value.name.as_str()])
                     .inc();
-                log::info!(
+                info!(
                     "Object {}.{}/{}/{} matches policy {}",
                     gvk.kind,
                     gvk.group,
@@ -161,12 +162,12 @@ impl PolicyEvaluator {
                         reason: res.1.clone(),
                     },
                 })
-                .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
+                .unwrap_or_else(|err| warn!("Could not send event: {:?}", err));
             if res.0 {
                 POLICY_EVALUATIONS_SUCCESS
                     .with_label_values(&[value.name.as_str()])
                     .inc();
-                log::info!("Policy '{}' evaluates to {}", value.name, res.0);
+                info!("Policy '{}' evaluates to {}", value.name, res.0);
                 if let Some(warning) = res.1 {
                     warnings.push(warning);
                 }
@@ -175,7 +176,7 @@ impl PolicyEvaluator {
                     .with_label_values(&[value.name.as_str()])
                     .inc();
                 let reason = res.1.unwrap_or_else(|| "-".to_string());
-                log::info!(
+                info!(
                     "Policy '{}' evaluates to {} with message '{}'",
                     value.name,
                     res.0,
