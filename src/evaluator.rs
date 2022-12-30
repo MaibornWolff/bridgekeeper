@@ -120,7 +120,7 @@ impl PolicyEvaluator {
         let mut matching_policies = Vec::new();
 
         // Collect all matching policies
-        for value in policies.policies.values() {
+        for value in policies.get_objects().values() {
             if value.is_match(&gvk, &namespace) {
                 MATCHED_POLICIES
                     .with_label_values(&[value.name.as_str()])
@@ -154,7 +154,7 @@ impl PolicyEvaluator {
 
             if let Some(used_modules) = &value.policy.modules {
                 for module_name in used_modules.iter() {
-                    match modules.modules.get(module_name) {
+                    match modules.get_objects().get(module_name) {
                         Some(module_info) => {
                             module_code.push_str(&module_info.module.python);
                             module_code.push_str("\n");
@@ -229,7 +229,7 @@ impl PolicyEvaluator {
     pub fn get_available_modules(&self) -> HashMap<String, ModuleInfo> {
         let module_store = self.modules.lock().expect("lock failed. Cannot continue");
         
-        module_store.modules.clone()
+        return module_store.get_objects();
     }
 }
 

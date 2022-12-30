@@ -110,7 +110,7 @@ impl Auditor {
         // While holding the lock only collect the policies or modules, directly auditing them would make the future of the method not implement Send which breaks the task spawn
         {
             let policy_store = self.policies.lock().expect("lock failed. Cannot continue");
-            for policy in policy_store.policies.values() {
+            for policy in policy_store.get_objects().values() {
                 if all || policy.policy.audit.unwrap_or(false) {
                     policies.push(policy.clone());
                 }
@@ -119,7 +119,7 @@ impl Auditor {
 
         {
             let module_store = self.modules.lock().expect("lock failed. Cannot continue");
-            modules.extend(module_store.modules.clone());
+            modules.extend(module_store.get_objects());
         }
 
         for policy in policies.iter() {

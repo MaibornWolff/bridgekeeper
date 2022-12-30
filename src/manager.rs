@@ -1,6 +1,5 @@
 use crate::events::{EventType};
 use crate::util::error::{kube_err, Result};
-use crate::util::traits::ObjectStore;
 use crate::{
     crd::Policy,
     crd::Module,

@@ -20,7 +20,7 @@ pub struct PolicyStore {
     pub policies: HashMap<String, PolicyInfo>,
 }
 
-pub type PolicyStoreRef = Arc<Mutex<PolicyStore>>;
+pub type PolicyStoreRef = Arc<Mutex<dyn ObjectStore<Policy, HashMap<String, PolicyInfo>> + Send>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PolicyInfo {
@@ -94,7 +94,7 @@ impl PolicyInfo {
     }
 }
 
-impl ObjectStore<Policy> for PolicyStore {
+impl ObjectStore<Policy, HashMap<String, PolicyInfo>> for PolicyStore {
     fn add_object(&mut self, policy: Policy) -> Option<ObjectReference> {
         let ref_info = create_object_reference(&policy);
         let name = policy.metadata.name.expect("name is always set");
@@ -121,6 +121,10 @@ impl ObjectStore<Policy> for PolicyStore {
         log::info!("Policy '{}' removed", name);
         self.policies.remove(&name);
         ACTIVE_POLICIES.dec();
+    }
+
+    fn get_objects(&self) -> HashMap<String, PolicyInfo> {
+        return self.policies.clone();
     }
 }
 

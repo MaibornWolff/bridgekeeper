@@ -17,7 +17,7 @@ pub struct ModuleStore {
     pub modules: HashMap<String, ModuleInfo>,
 }
 
-pub type ModuleStoreRef = Arc<Mutex<ModuleStore>>;
+pub type ModuleStoreRef = Arc<Mutex<dyn ObjectStore<Module, HashMap<String, ModuleInfo>> + Send>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleInfo {
@@ -54,7 +54,7 @@ impl ModuleInfo {
     }
 }
 
-impl ObjectStore<Module> for ModuleStore {
+impl ObjectStore<Module, HashMap<String, ModuleInfo>> for ModuleStore {
     fn add_object(&mut self, module: Module) -> Option<ObjectReference> {
         let ref_info = create_object_reference(&module);
         let name = module.metadata.name.expect("name is always set");
@@ -81,5 +81,9 @@ impl ObjectStore<Module> for ModuleStore {
         log::info!("Module '{}' removed", name);
         self.modules.remove(&name);
         ACTIVE_MODULES.dec();
+    }
+
+    fn get_objects(&self) -> HashMap<String, ModuleInfo> {
+        return self.modules.clone();
     }
 }
