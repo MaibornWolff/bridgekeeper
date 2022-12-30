@@ -2,7 +2,7 @@ use crate::{
     crd::{Policy, PolicySpec},
     events::{EventSender, Event, PolicyEventData, EventType},
     policy::{PolicyInfo, PolicyStoreRef},
-    module::{ModuleStoreRef},
+    module::{ModuleStoreRef, ModuleInfo},
 };
 use kube::core::{
     admission::{self, Operation},
@@ -12,7 +12,7 @@ use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
 use serde_derive::Serialize;
-use std::sync::Arc;
+use std::{sync::Arc, collections::HashMap};
 
 lazy_static! {
     static ref MATCHED_POLICIES: CounterVec = register_counter_vec!(
@@ -225,24 +225,33 @@ impl PolicyEvaluator {
             patch: patches,
         }
     }
+
+    pub fn get_available_modules(&self) -> HashMap<String, ModuleInfo> {
+        let module_store = self.modules.lock().expect("lock failed. Cannot continue");
+        
+        module_store.modules.clone()
+    }
 }
 
 pub fn validate_policy_admission(
     request: &admission::AdmissionRequest<Policy>,
+    module_code: &str
 ) -> (bool, Option<String>) {
     if let Some(policy) = request.object.as_ref() {
         let name = match policy.metadata.name.as_ref() {
             Some(name) => name.as_str(),
             None => "-invalidname-",
         };
-        validate_policy(name, &policy.spec)
+        validate_policy(name, &policy.spec, module_code)
     } else {
         (false, Some("No rule found".to_string()))
     }
 }
 
-pub fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<String>) {
-    let python_code = policy.rule.python.clone();
+pub fn validate_policy(name: &str, policy: &PolicySpec, module_code: &str) -> (bool, Option<String>) {
+    let mut python_code = String::from(module_code);
+    python_code.push_str(&policy.rule.python.clone());
+
     Python::with_gil(|py| {
         if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();

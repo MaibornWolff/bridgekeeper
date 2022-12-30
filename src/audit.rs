@@ -156,13 +156,13 @@ impl Auditor {
                         module_code.push_str("\n");
                     },
                     None => {
-                        log::warn!("Could not find module '{}'", module_name)
+                        log::warn!("Could not find module '{}'", module_name);
                     }
                 };
             }
         }
 
-        let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy);
+        let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy, &module_code);
         if !valid {
             println!(
                 "Failed to validate policy: {}",

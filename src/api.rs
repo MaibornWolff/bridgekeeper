@@ -83,6 +83,7 @@ async fn admission_mutate(
 #[rocket::post("/validate-policy", data = "<data>")]
 async fn api_validate_policy(
     data: Json<AdmissionReview<Policy>>,
+    evaluator: &State<PolicyEvaluatorRef>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, ApiError> {
     HTTP_REQUEST_COUNTER
         .with_label_values(&["/validate-policy"])
@@ -93,7 +94,31 @@ async fn api_validate_policy(
     })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let (allowed, reason) = validate_policy_admission(&admission_request);
+    let mut module_code = String::new();
+
+    if let Some(policy) = &admission_request.object {
+        if let Some(used_modules) = policy.spec.modules.clone() {
+            let evaluator = evaluator.inner().clone();
+            let modules = evaluator.get_available_modules();
+
+            for module_name in used_modules.iter() {
+                match modules.get(module_name) {
+                    Some(module_info) => {
+                        module_code.push_str(&module_info.module.python);
+                        module_code.push_str("\n");
+                    },
+                    None => {
+                        response.allowed = false;
+                        response.result.code = Some(403);
+                        response.result.message = Some(format!("Could not find module '{}'", module_name));
+                        return Ok(Json(response.into_review()))
+                    }
+                };
+            }
+        }
+    }
+
+    let (allowed, reason) = validate_policy_admission(&admission_request, &module_code);
     response.allowed = allowed;
     if !allowed {
         response.result.message = reason;
