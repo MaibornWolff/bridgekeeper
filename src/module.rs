@@ -83,16 +83,3 @@ impl ObjectStore<Module> for ModuleStore {
         ACTIVE_MODULES.dec();
     }
 }
-
-// pub fn load_modules_from_file(modules: ModuleStoreRef, filename: &str) -> Result<usize> {
-//     let mut modules = modules.lock().expect("Lock failed");
-//     let data = std::fs::read_to_string(filename).map_err(load_err)?;
-
-//     let mut count = 0;
-//     for document in serde_yaml::Deserializer::from_str(&data) {
-//         let module = Module::deserialize(document).map_err(load_err)?;
-//         modules.add_object(module);
-//         count += 1;
-//     }
-//     Ok(count)
-// }

@@ -209,7 +209,7 @@ impl Auditor {
                             let target_identifier =
                                 gen_target_identifier(resource_description, &object);
                             let (result, message, _patch) =
-                                crate::evaluator::evaluate_policy_audit(policy, object);
+                                crate::evaluator::evaluate_policy_audit(policy, object, &module_code);
                             NUM_CHECKED_OBJECTS
                                 .with_label_values(&[policy.name.as_str(), namespace.as_str()])
                                 .inc();
@@ -237,7 +237,7 @@ impl Auditor {
                 for object in objects {
                     let target_identifier = gen_target_identifier(resource_description, &object);
                     let (result, message, _patch) =
-                        crate::evaluator::evaluate_policy_audit(policy, object);
+                        crate::evaluator::evaluate_policy_audit(policy, object, &module_code);
                     NUM_CHECKED_OBJECTS
                         .with_label_values(&[policy.name.as_str(), ""])
                         .inc();

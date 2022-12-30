@@ -299,12 +299,13 @@ fn evaluate_policy(
 pub fn evaluate_policy_audit(
     policy: &PolicyInfo,
     object: DynamicObject,
+    module_code: &str,
 ) -> (bool, Option<String>, Option<json_patch::Patch>) {
     let request = ValidationRequest {
         object,
         operation: Operation::Update,
     };
-    evaluate_policy(policy, &request, "")  // TODO: load module_code
+    evaluate_policy(policy, &request, module_code)
 }
 
 fn extract_result(
