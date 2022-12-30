@@ -477,5 +477,35 @@ def validate(request):
         );
     }
 
-    // TODO: Test modules
+    #[test]
+    fn test_use_of_module() {
+        pyo3::prepare_freethreaded_python();
+        let python = r#"
+def validate(request):
+    return bool_from_module()
+        "#;
+
+        let module_code = r#"
+def bool_from_module():
+    return True
+        "#;
+
+        let policy_spec = PolicySpec::from_python(python.to_string());
+        let policy = PolicyInfo::new("test".to_string(), policy_spec, Default::default());
+
+        let object = DynamicObject {
+            types: None,
+            metadata: ObjectMeta::default(),
+            data: serde_json::Value::Null,
+        };
+        let request = ValidationRequest {
+            object,
+            operation: Operation::Create,
+        };
+
+        let (res, reason, patch) = evaluate_policy(&policy, &request, &module_code);
+        assert!(res, "validate function failed: {}", reason.unwrap());
+        assert!(reason.is_none());
+        assert!(patch.is_none());
+    }
 }
