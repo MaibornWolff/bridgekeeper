@@ -77,17 +77,6 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
                             ));
                         }
                     }
-                    if let Err(err) = events_api.create(&PostParams::default(), &kube_event).await {
-                        log::warn!(
-                            "Could not create event for policy {}. Reason: {}",
-                            event
-                                .object_reference
-                                .name
-                                .clone()
-                                .unwrap_or_else(|| "-".to_string()),
-                            err
-                        );
-                    }
                 },
                 EventType::Module(event_data) => {
                     match event_data {
@@ -97,6 +86,18 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
                         }
                     }
                 }
+            }
+
+            if let Err(err) = events_api.create(&PostParams::default(), &kube_event).await {
+                log::warn!(
+                    "Could not create event for policy {}. Reason: {}",
+                    event
+                        .object_reference
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| "-".to_string()),
+                    err
+                );
             }
         }
     });
