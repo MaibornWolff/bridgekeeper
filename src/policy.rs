@@ -1,6 +1,7 @@
 use crate::crd::{Policy, PolicySpec};
+use crate::util::traits::ObjectStore;
 use crate::util::error::{load_err, Result};
-use k8s_openapi::api::core::v1::ObjectReference as KubeObjectReference;
+use crate::util::types::ObjectReference;
 use kube::api::GroupVersionKind;
 use kube::core::Resource;
 use lazy_static::lazy_static;
@@ -25,27 +26,7 @@ pub type PolicyStoreRef = Arc<Mutex<PolicyStore>>;
 pub struct PolicyInfo {
     pub name: String,
     pub policy: PolicySpec,
-    pub ref_info: PolicyObjectReference,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct PolicyObjectReference {
-    pub api_version: Option<String>,
-    pub kind: Option<String>,
-    pub name: Option<String>,
-    pub uid: Option<String>,
-}
-
-impl PolicyObjectReference {
-    pub fn to_object_reference(&self) -> KubeObjectReference {
-        KubeObjectReference {
-            api_version: self.api_version.clone(),
-            kind: self.kind.clone(),
-            name: self.name.clone(),
-            uid: self.uid.clone(),
-            ..Default::default()
-        }
-    }
+    pub ref_info: ObjectReference,
 }
 
 impl PolicyStore {
@@ -57,8 +38,8 @@ impl PolicyStore {
     }
 }
 
-fn create_object_reference(obj: &Policy) -> PolicyObjectReference {
-    PolicyObjectReference {
+fn create_object_reference(obj: &Policy) -> ObjectReference {
+    ObjectReference {
         api_version: Some(Policy::api_version(&()).to_string()),
         kind: Some(Policy::kind(&()).to_string()),
         name: obj.metadata.name.clone(),
@@ -67,7 +48,7 @@ fn create_object_reference(obj: &Policy) -> PolicyObjectReference {
 }
 
 impl PolicyInfo {
-    pub fn new(name: String, policy: PolicySpec, ref_info: PolicyObjectReference) -> PolicyInfo {
+    pub fn new(name: String, policy: PolicySpec, ref_info: ObjectReference) -> PolicyInfo {
         PolicyInfo {
             name,
             policy,
@@ -113,8 +94,8 @@ impl PolicyInfo {
     }
 }
 
-impl PolicyStore {
-    pub fn add_policy(&mut self, policy: Policy) -> Option<PolicyObjectReference> {
+impl ObjectStore<Policy> for PolicyStore {
+    fn add_object(&mut self, policy: Policy) -> Option<ObjectReference> {
         let ref_info = create_object_reference(&policy);
         let name = policy.metadata.name.expect("name is always set");
         if let Some(existing_policy_info) = self.policies.get(&name) {
@@ -135,7 +116,7 @@ impl PolicyStore {
         }
     }
 
-    pub fn remove_policy(&mut self, policy: Policy) {
+    fn remove_object(&mut self, policy: Policy) {
         let name = policy.metadata.name.expect("name is always set");
         log::info!("Policy '{}' removed", name);
         self.policies.remove(&name);
@@ -150,7 +131,7 @@ pub fn load_policies_from_file(policies: PolicyStoreRef, filename: &str) -> Resu
     let mut count = 0;
     for document in serde_yaml::Deserializer::from_str(&data) {
         let policy = Policy::deserialize(document).map_err(load_err)?;
-        policies.add_policy(policy);
+        policies.add_object(policy);
         count += 1;
     }
     Ok(count)

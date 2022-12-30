@@ -16,6 +16,19 @@ pub struct PolicySpec {
     pub rule: Rule,
     pub audit: Option<bool>,
     pub enforce: Option<bool>,
+    pub modules: Option<Vec<String>>,
+}
+
+#[derive(
+    CustomResource, Serialize, Deserialize, Debug, Default, Clone, Hash, PartialEq, Eq, JsonSchema,
+)]
+#[kube(
+    group = "bridgekeeper.maibornwolff.de",
+    version = "v1alpha1",
+    kind = "Module"
+)]
+pub struct ModuleSpec {
+    pub python: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Hash, PartialEq, Eq, JsonSchema)]
@@ -105,6 +118,7 @@ impl PolicySpec {
             enforce: Some(true),
             target,
             rule: Default::default(),
+            modules: None,
         }
     }
 
@@ -114,6 +128,7 @@ impl PolicySpec {
             enforce: Some(true),
             target: Default::default(),
             rule: Rule { python },
+            modules: None,
         }
     }
 }

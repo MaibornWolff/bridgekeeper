@@ -4,7 +4,7 @@ use crate::constants::POD_CERTS_DIR;
 use crate::evaluator::PolicyEvaluator;
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
-use crate::policy::PolicyStore;
+use crate::{module::ModuleStore, policy::PolicyStore};
 
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "server")]
@@ -50,17 +50,22 @@ pub async fn run(args: Args) {
 
     // Initiate services
     let policies = PolicyStore::new();
+    let modules = ModuleStore::new();
     let event_sender = init_event_watcher(&client);
-    let mut manager = Manager::new(client.clone(), policies.clone(), event_sender.clone());
-    let evaluator = PolicyEvaluator::new(policies.clone(), event_sender.clone());
+    let mut manager = Manager::new(client.clone(), policies.clone(), modules.clone(), event_sender.clone());
+    let evaluator = PolicyEvaluator::new(policies.clone(), modules.clone(), event_sender.clone());
     manager.start().await;
     manager
         .load_existing_policies()
         .await
         .expect("Could not load existing policies");
+    manager
+        .load_existing_modules()
+        .await
+        .expect("Could not load existing policies");
 
     if args.audit {
-        crate::audit::launch_loop(client, policies, args.audit_interval.unwrap_or(600)).await;
+        crate::audit::launch_loop(client, policies, modules, args.audit_interval.unwrap_or(600)).await;
     }
 
     // Launch API with webhook endpoint
