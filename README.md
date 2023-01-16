@@ -119,15 +119,42 @@ An example that adds a label to each deployment can be found under [example/muta
 
 Bridgekeeper has an audit feature that periodically checks if any existing objects violate policies. This is useful to check objects that were created before the policy was installed.
 
-To enable the audit feature launch bridgekeeper with the `--audit` flag. The audit interval is by default to 10 minutes and can be changed with `--audit-interval <seconds>`. If installed using helm audit can be enabled by setting `bridgekeeper.audit.enable` to `true` and the interval can be set with `bridgekeeper.audit.interval`.
+There are two ways to run the audits:
+
+* Embedded in the main bridgekeeper process. This should only be used if you run bridgekeeper with only one replica as otherwise all replicas would run the audit.
+* As a separate container run as a CronJob. This requires a Prometheus Pushgateway instance to collect metrics but can be used with multiple replicas enabled.
+
+To configure one of the modes in the helm chart use these options:
+
+```yaml
+bridgekeeper:
+  # Embedded mode
+  audit: 
+    # Set this to true if you want bridgekeeper to run regular audits, replicaCount should be set to 1
+    enabled: false
+    # Audit interval in seconds
+    interval: 600
+  # Separate CronJob
+  audit_cronjob:
+    # Set this to true if you want bridgekeeper to run regular audits as a cronjob (only this or audit.enabled should be set to true)
+    enabled: false
+    # Set to true to have bridgekeeper update the Policy object status with a list of violations
+    update_status: true
+    # Cron schedule when to run the audits
+    schedule: "*/30 * * * *"  # default: every 30 minutes
+    # URL of the Prometheus Pushgateway to send metrics to, leave empty to disable. Example: http://pushgateway.default.svc.cluster.local:9091
+    pushgateway_url: ""
+    # CPU and memory resource requests and limits, if not set defaults to that of main brigekeeper deployment
+    resources: {}
+```
 
 To include a policy in the audit run set the `spec.audit` field to `true`. The namespace include/exclude lists of the policies and the `bridgekeeper/ignore` label on namespaces are honored during audit runs. The results of the run will be stored in the status of the policy with a list of objects that violate the policy and the provided reason if any.
 
-A single audit run can also be launched locally: `bridgekeeper audit`. This will connect to the kubernetes cluster defined by the currently active kubernetes context (as kubectl would use it), read in all existing policies and perform an audit run. All objects that violate a policy are printed on the console as output, this can be disabled by providing `--silent`. By adding the `--status` flag the policy status will also be updated with the violations.
+If run in embedded mode or with a configured pushgateway url bridgekeeper will provide metrics for the audit run to Prometheus. These can for example be used to create a Grafana dashboard displaying violations. The relevant metrics are `bridgekeeper_audit_checked_objects` and `bridgekeeper_audit_violations` which both have labels `namespace` and `policy`. If you want to monitor that audit runs are done successfully you can check the metrics `bridgekeeper_audit_last_run_successful` (set to 1 if last run was successful) and `bridgekeeper_audit_last_run_timestamp_seconds` which gives the time in seconds since unix epoch when audit was last run.
 
-Note: Currently the audit feature only works correctly if you launch bridgekeeper as a single instance (in helm set `replicaCount: 1`).
+A single audit run can also be launched locally running the binary with `bridgekeeper audit`. This will connect to the kubernetes cluster defined by the currently active kubernetes context (as kubectl would use it), read in all existing policies and perform an audit run. All objects that violate a policy are printed on the console as output, this can be disabled by providing `--silent`. By adding the `--status` flag the policy status will also be updated with the violations.
 
-Any mutations returned by the rules are ignored in audit mode.
+Note that any mutations returned by the rules are ignored in audit mode and no objects are modified.
 
 ## Developer Guide
 
