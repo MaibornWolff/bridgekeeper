@@ -94,7 +94,7 @@ async fn api_validate_policy(
     })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let (allowed, reason) = validate_policy_admission(&admission_request);
+    let (allowed, reason) = validate_policy_admission(&admission_request).await;
     response.allowed = allowed;
     if !allowed {
         response.result.message = reason;
