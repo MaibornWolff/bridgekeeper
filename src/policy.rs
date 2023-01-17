@@ -1,5 +1,6 @@
 use crate::crd::{Policy, PolicySpec};
 use crate::util::error::{load_err, Result};
+use crate::util::defaults::api_group_or_default;
 use k8s_openapi::api::core::v1::ObjectReference as KubeObjectReference;
 use kube::api::GroupVersionKind;
 use kube::core::Resource;
@@ -77,7 +78,10 @@ impl PolicyInfo {
 
     pub fn is_match(&self, gvk: &GroupVersionKind, namespace: &Option<String>) -> bool {
         for kind in self.policy.target.matches.iter() {
-            if (kind.api_group == "*" || kind.api_group.to_lowercase() == gvk.group.to_lowercase())
+            // Default to "core" if apiGroup is set to ""
+            let api_group = api_group_or_default(kind.api_group.as_str());
+
+            if (api_group == "*" || api_group.to_lowercase() == gvk.group.to_lowercase())
                 && (kind.kind == "*" || kind.kind.to_lowercase() == gvk.kind.to_lowercase())
             {
                 if let Some(target_namespace) = namespace {
