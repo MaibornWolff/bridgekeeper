@@ -5,14 +5,13 @@ use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStor
 use crate::util::error::{kube_err, load_err, BridgekeeperError, Result};
 use crate::util::k8s_client::{list_with_retry, patch_status_with_retry};
 use crate::util::defaults::api_group_or_default;
+use crate::util::k8s_util::{namespaces, find_k8s_resource_matches, gen_target_identifier};
 use argh::FromArgs;
-use k8s_openapi::api::core::v1::Namespace;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{APIGroup, APIResource};
 use k8s_openapi::chrono::{DateTime, Utc};
 use kube::{
-    api::{Api, DynamicObject, GroupVersionKind, ListParams, Patch, PatchParams},
+    api::{Api, DynamicObject, ListParams, Patch, PatchParams},
     core::ApiResource as KubeApiResource,
-    Client, CustomResourceExt, Resource,
+    Client, CustomResourceExt
 };
 use lazy_static::lazy_static;
 use prometheus::proto::MetricFamily;
@@ -133,7 +132,7 @@ impl Auditor {
         update_status: bool,
     ) -> Result<()> {
         println!("Auditing policy {}", policy.name);
-        let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy);
+        let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy).await;
         if !valid {
             println!(
                 "Failed to validate policy: {}",
@@ -148,9 +147,7 @@ impl Auditor {
             // Default to "core" if apiGroup is set to ""
             let api_group = api_group_or_default(target_match.api_group.as_str());
 
-            let mut result = self
-                .find_k8s_resource_matches(api_group, &target_match.kind)
-                .await?;
+            let mut result = find_k8s_resource_matches(api_group, &target_match.kind, &self.k8s_client).await?;
             matched_resources.append(&mut result);
         }
 
@@ -276,137 +273,6 @@ impl Auditor {
             Err(err) => Err(BridgekeeperError::KubernetesError(format!("{}", err))),
         }
     }
-
-    async fn find_k8s_resource_matches(
-        &self,
-        api_group: &str,
-        kind: &str,
-    ) -> Result<Vec<(KubeApiResource, bool)>> {
-        let mut matched_resources = Vec::new();
-        // core api group
-        if api_group.is_empty() {
-            let versions = self
-                .k8s_client
-                .list_core_api_versions()
-                .await
-                .map_err(kube_err)?;
-            let version = versions
-                .versions
-                .first()
-                .expect("core api group always has a version");
-            let resources = self
-                .k8s_client
-                .list_core_api_resources(version)
-                .await
-                .map_err(kube_err)?;
-            for resource in resources.resources.iter() {
-                if (kind == "*" || resource.kind.to_lowercase() == kind.to_lowercase())
-                    && !resource.name.contains('/')
-                {
-                    matched_resources.push((
-                        gen_resource_description(None, resource),
-                        resource.namespaced,
-                    ));
-                }
-            }
-        } else {
-            for group in self
-                .k8s_client
-                .list_api_groups()
-                .await
-                .map_err(kube_err)?
-                .groups
-                .iter()
-            {
-                if api_group == "*" || group.name.to_lowercase() == api_group.to_lowercase() {
-                    let api_version = group
-                        .preferred_version
-                        .clone()
-                        .expect("API Server always has a preferred_version")
-                        .group_version;
-                    for resource in self
-                        .k8s_client
-                        .list_api_group_resources(&api_version)
-                        .await
-                        .map_err(kube_err)?
-                        .resources
-                        .iter()
-                    {
-                        if (kind == "*" || resource.kind.to_lowercase() == kind.to_lowercase())
-                            && !resource.name.contains('/')
-                        {
-                            matched_resources.push((
-                                gen_resource_description(Some(group), resource),
-                                resource.namespaced,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        Ok(matched_resources)
-    }
-}
-
-fn gen_resource_description(
-    api_group: Option<&APIGroup>,
-    api_resource: &APIResource,
-) -> KubeApiResource {
-    let gvk = GroupVersionKind {
-        group: match api_group {
-            Some(group) => group.name.clone(),
-            None => String::from(""),
-        },
-        version: match api_group {
-            Some(group) => {
-                group
-                    .preferred_version
-                    .clone()
-                    .expect("API Server always has a preferred_version")
-                    .version
-            }
-            None => String::from(""),
-        },
-        kind: api_resource.kind.clone(),
-    };
-    KubeApiResource::from_gvk_with_plural(&gvk, &api_resource.name)
-}
-
-fn gen_target_identifier(resource: &KubeApiResource, object: &DynamicObject) -> String {
-    let meta = object.meta();
-    format!(
-        "{}/{}/{}/{}",
-        resource.group,
-        resource.kind,
-        meta.namespace.clone().unwrap_or_else(|| "-".to_string()),
-        meta.name.clone().expect("Each object has a name")
-    )
-}
-
-async fn namespaces(k8s_client: Client) -> Result<Vec<String>> {
-    let mut namespaces = Vec::new();
-    let namespace_api: Api<Namespace> = Api::all(k8s_client);
-    let result = namespace_api
-        .list(&ListParams::default())
-        .await
-        .map_err(kube_err)?;
-    for namespace in result.iter() {
-        if !namespace
-            .metadata
-            .labels
-            .as_ref()
-            .map_or(false, |map| map.contains_key("bridgekeeper/ignore"))
-        {
-            namespaces.push(
-                namespace
-                    .metadata
-                    .name
-                    .clone()
-                    .expect("Each object has a name"),
-            );
-        }
-    }
-    Ok(namespaces)
 }
 
 pub async fn run(args: Args) {
