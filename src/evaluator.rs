@@ -225,7 +225,6 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<S
     
     // Iterate through match items and check whether specified resources exist in the cluster
     for match_item in policy.target.matches.iter() {
-        println!("Now checking {} {}", &match_item.api_group, &match_item.kind);
         let api_resource_exists = match find_k8s_resource_matches(&match_item.api_group, &match_item.kind, &client).await {
             Ok(resources) => {
                 !resources.is_empty()
