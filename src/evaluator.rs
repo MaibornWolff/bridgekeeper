@@ -1,7 +1,7 @@
 use crate::{
     crd::{Policy, PolicySpec},
     events::{EventSender, PolicyEvent, PolicyEventData},
-    policy::{PolicyInfo, PolicyStoreRef}, util::k8s_util::find_k8s_resource_matches,
+    policy::{PolicyInfo, PolicyStoreRef}, util::k8s::find_k8s_resource_matches,
 };
 use kube::{core::{
     admission::{self, Operation},

@@ -3,9 +3,8 @@ use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStoreRef};
 use crate::util::error::{kube_err, load_err, BridgekeeperError, Result};
-use crate::util::k8s_client::{list_with_retry, patch_status_with_retry};
+use crate::util::k8s::{list_with_retry, patch_status_with_retry, namespaces, find_k8s_resource_matches, gen_target_identifier};
 use crate::util::defaults::api_group_or_default;
-use crate::util::k8s_util::{namespaces, find_k8s_resource_matches, gen_target_identifier};
 use argh::FromArgs;
 use k8s_openapi::chrono::{DateTime, Utc};
 use kube::{
