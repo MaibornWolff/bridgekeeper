@@ -1,6 +1,5 @@
 pub mod cert;
 pub mod error;
-pub mod k8s_client;
-pub mod k8s_util;
+pub mod k8s;
 pub mod webhook;
 pub mod defaults;

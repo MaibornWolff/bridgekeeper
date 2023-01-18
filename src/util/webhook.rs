@@ -1,5 +1,5 @@
 use crate::util::error::{kube_err, Result};
-use crate::{constants::*, util::cert::CertKeyPair, util::k8s_client::apply};
+use crate::{constants::*, util::cert::CertKeyPair, util::k8s::apply};
 use k8s_openapi::api::admissionregistration::v1::{
     MutatingWebhookConfiguration, ValidatingWebhookConfiguration,
 };
