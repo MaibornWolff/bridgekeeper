@@ -1,4 +1,5 @@
 use argh::FromArgs;
+use tracing::Level;
 
 mod api;
 mod audit;
@@ -32,16 +33,25 @@ enum CommandEnum {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let args: MainArgs = argh::from_env();
+
     let log_level = match args.command {
-        CommandEnum::Server(_) => log::LevelFilter::Info,
-        _ => log::LevelFilter::Error,
+        CommandEnum::Server(_) => Level::INFO,
+        _ => Level::ERROR,
     };
-    simple_logger::SimpleLogger::new()
-        .with_level(log_level)
-        .with_module_level("rocket::server", log::LevelFilter::Warn)
-        .with_module_level("_", log::LevelFilter::Warn)
-        .init()
-        .expect("failed to initialize logging");
+
+    let log_mode = std::env::var("LOGGING_MODE").unwrap_or_else(|_| "plain".into());
+
+    if log_mode.to_lowercase().eq("json") {
+        tracing_subscriber::fmt()
+            .json()
+            .with_max_level(log_level)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_max_level(log_level)
+            .init();
+    }
+
     match args.command {
         CommandEnum::Server(args) => server::run(args).await,
         CommandEnum::Init(args) => helper::init::run(args).await,

@@ -8,6 +8,7 @@ use kube::{
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec, Encoder, TextEncoder};
 use rocket::http::ContentType;
+use rocket::log::LogLevel;
 use rocket::response::Responder;
 use rocket::{config::TlsConfig, serde::json::Json, Config, State};
 use std::convert::TryInto;
@@ -137,6 +138,7 @@ pub async fn server(cert: CertKeyPair, evaluator: PolicyEvaluatorRef) {
             cert.cert.as_bytes(),
             cert.key.as_bytes(),
         )),
+        log_level: LogLevel::Off,
         ..Config::default()
     };
 

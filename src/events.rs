@@ -8,6 +8,7 @@ use kube::{
 };
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::task;
+use tracing::warn;
 
 pub type EventSender = UnboundedSender<PolicyEvent>;
 
@@ -62,7 +63,7 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
                 }
             }
             if let Err(err) = events_api.create(&PostParams::default(), &kube_event).await {
-                log::warn!(
+                warn!(
                     "Could not create event for policy {}. Reason: {}",
                     event
                         .policy_reference

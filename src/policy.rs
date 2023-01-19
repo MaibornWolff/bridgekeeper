@@ -8,6 +8,7 @@ use prometheus::{register_gauge, Gauge};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use tracing::info;
 
 lazy_static! {
     static ref ACTIVE_POLICIES: Gauge =
@@ -120,7 +121,7 @@ impl PolicyStore {
         if let Some(existing_policy_info) = self.policies.get(&name) {
             if existing_policy_info.policy != policy.spec {
                 let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
-                log::info!("Policy '{}' updated", name);
+                info!("Policy '{}' updated", name);
                 self.policies.insert(name, policy_info);
                 Some(ref_info)
             } else {
@@ -128,7 +129,7 @@ impl PolicyStore {
             }
         } else {
             let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
-            log::info!("Policy '{}' added", name);
+            info!("Policy '{}' added", name);
             self.policies.insert(name, policy_info);
             ACTIVE_POLICIES.inc();
             Some(ref_info)
@@ -137,7 +138,7 @@ impl PolicyStore {
 
     pub fn remove_policy(&mut self, policy: Policy) {
         let name = policy.metadata.name.expect("name is always set");
-        log::info!("Policy '{}' removed", name);
+        info!("Policy '{}' removed", name);
         self.policies.remove(&name);
         ACTIVE_POLICIES.dec();
     }

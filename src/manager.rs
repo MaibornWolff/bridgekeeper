@@ -11,6 +11,7 @@ use kube::{
     Client,
 };
 use tokio::task;
+use tracing::warn;
 
 pub struct Manager {
     k8s_client: Client,
@@ -42,7 +43,7 @@ impl Manager {
                             policy_reference: ref_info,
                             event_data: PolicyEventData::Loaded,
                         })
-                        .unwrap_or_else(|err| log::warn!("Could not send event: {:?}", err));
+                        .unwrap_or_else(|err| warn!("Could not send event: {:?}", err));
                 }
             }
         }
@@ -71,7 +72,7 @@ impl Manager {
                                         event_data: PolicyEventData::Loaded,
                                     })
                                     .unwrap_or_else(|err| {
-                                        log::warn!("Could not send event: {:?}", err)
+                                        warn!("Could not send event: {:?}", err)
                                     });
                             }
                         }

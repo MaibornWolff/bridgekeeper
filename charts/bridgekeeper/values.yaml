@@ -73,6 +73,9 @@ bridgekeeper:
   # Timeout in seconds for admission requests (if strictAdmission false requests will be allowed after timeout, otherwise rejected), defaults to 5 seconds
   # Maximum allowed value is 30 seconds
   admissionTimeoutSeconds: ""
+  # Configures the logging type. Available options: plain | json
+  logging:
+    mode: plain
   audit: 
     # Set this to true if you want bridgekeeper to run regular audits
     enabled: false
