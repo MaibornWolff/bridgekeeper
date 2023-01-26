@@ -233,7 +233,7 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<S
         };
 
         if ! api_resource_exists {
-            return (false, Some(format!("Specified target {}/{} is not available", match_item.api_group, match_item.kind)))
+            return (false, Some(format!("{}: Specified target {}/{} is not available", name.to_string(), match_item.api_group, match_item.kind)))
         }
     }
     
@@ -241,7 +241,7 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<S
     Python::with_gil(|py| {
         if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
-            (false, Some(format!("Python compile error: {:?}", err)))
+            (false, Some(format!("{}: Python compile error: {:?}", name.to_string(), err)))
         } else {
             (true, None)
         }
@@ -317,7 +317,7 @@ fn extract_result(
 
 fn fail(name: &str, reason: &str) -> (bool, Option<String>, Option<json_patch::Patch>) {
     POLICY_EVALUATIONS_ERROR.with_label_values(&[name]).inc();
-    (false, Some(reason.to_string()), None)
+    (false, Some(format!("{}: {}", name.to_string(), reason.to_string())), None)
 }
 
 fn generate_patches(
