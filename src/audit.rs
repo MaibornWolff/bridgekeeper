@@ -4,7 +4,6 @@ use crate::manager::Manager;
 use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStoreRef};
 use crate::util::error::{kube_err, load_err, BridgekeeperError, Result};
 use crate::util::k8s::{list_with_retry, patch_status_with_retry, namespaces, find_k8s_resource_matches, gen_target_identifier};
-use crate::util::defaults::api_group_or_default;
 use argh::FromArgs;
 use k8s_openapi::chrono::{DateTime, Utc};
 use kube::{
@@ -143,10 +142,7 @@ impl Auditor {
         let namespaces = namespaces(self.k8s_client.clone()).await?;
         let mut matched_resources: Vec<(KubeApiResource, bool)> = Vec::new();
         for target_match in policy.policy.target.matches.iter() {
-            // Default to "core" if apiGroup is set to ""
-            let api_group = api_group_or_default(target_match.api_group.as_str());
-
-            let mut result = find_k8s_resource_matches(api_group, &target_match.kind, &self.k8s_client).await?;
+            let mut result = find_k8s_resource_matches(&target_match.api_group, &target_match.kind, &self.k8s_client).await?;
             matched_resources.append(&mut result);
         }
 

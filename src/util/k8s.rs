@@ -89,7 +89,7 @@ pub async fn find_k8s_resource_matches(
                 && !resource.name.contains('/')
             {
                 matched_resources.push((
-                    gen_resource_description(None, resource),
+                    gen_resource_description(None, resource, Some(version.clone())),
                     resource.namespaced,
                 ));
             }
@@ -119,7 +119,7 @@ pub async fn find_k8s_resource_matches(
                         && !resource.name.contains('/')
                     {
                         matched_resources.push((
-                            gen_resource_description(Some(group), resource),
+                            gen_resource_description(Some(group), resource, None),
                             resource.namespaced,
                         ));
                     }
@@ -133,6 +133,7 @@ pub async fn find_k8s_resource_matches(
 pub fn gen_resource_description(
     api_group: Option<&APIGroup>,
     api_resource: &APIResource,
+    version: Option<String>,
 ) -> KubeApiResource {
     let gvk = GroupVersionKind {
         group: match api_group {
@@ -147,7 +148,7 @@ pub fn gen_resource_description(
                     .expect("API Server always has a preferred_version")
                     .version
             }
-            None => String::from(""),
+            None => version.unwrap_or_default(),
         },
         kind: api_resource.kind.clone(),
     };
