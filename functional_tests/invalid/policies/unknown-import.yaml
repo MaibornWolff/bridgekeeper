@@ -1,0 +1,16 @@
+# Verifies that rules with invalid imports are not accepted
+apiVersion: bridgekeeper.maibornwolff.de/v1alpha1
+kind: Policy
+metadata:
+  name: unknown-import
+spec:
+  enforce: true
+  target:
+    matches:
+      - apiGroup: ""
+        kind: "Service"
+  rule:
+    python: |
+      import someinvalidimport
+      def validate(request):
+        return True

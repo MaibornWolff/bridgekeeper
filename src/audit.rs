@@ -3,9 +3,10 @@ use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStoreRef};
 use crate::util::error::{kube_err, load_err, BridgekeeperError, Result};
-use crate::util::k8s::{list_with_retry, patch_status_with_retry, namespaces, find_k8s_resource_matches, gen_target_identifier};
+use crate::util::k8s::{list_with_retry, patch_status_with_retry, namespaces, find_k8s_resource_matches};
 use argh::FromArgs;
 use k8s_openapi::chrono::{DateTime, Utc};
+use kube::Resource;
 use kube::{
     api::{Api, DynamicObject, ListParams, Patch, PatchParams},
     core::ApiResource as KubeApiResource,
@@ -16,6 +17,7 @@ use prometheus::proto::MetricFamily;
 use prometheus::{
     register_counter, register_gauge, register_gauge_vec, Counter, Encoder, Gauge, GaugeVec,
 };
+use serde::Serialize;
 use serde_json::json;
 use std::time::SystemTime;
 use tokio::task;
@@ -71,9 +73,46 @@ pub struct Args {
     /// load policies from file instead of from kubernetes
     #[argh(option, short = 'f')]
     file: Vec<String>,
+    /// produce json output with all violations
+    #[argh(switch)]
+    json: bool,
 }
 
-pub struct Auditor {
+#[derive(Serialize)]
+struct EvaluationTarget {
+    api_group: String,
+    kind: String,
+    namespace: Option<String>,
+    name: String, 
+}
+
+impl EvaluationTarget {
+    pub fn new(resource: &KubeApiResource, object: &DynamicObject) -> EvaluationTarget {
+        let meta = object.meta();
+        EvaluationTarget { api_group: resource.group.clone(), kind: resource.kind.clone(), namespace: meta.namespace.clone(), name: meta.name.clone().expect("Each object has a name") }
+    }
+
+    pub fn identifier(&self) -> String {
+        format!(
+            "{}/{}/{}/{}",
+            self.api_group, self.kind, self.namespace.clone().unwrap_or("-".to_string()), self.name)
+    }
+}
+
+#[derive(Serialize)]
+struct AuditViolation {
+    policy: String,
+    target: EvaluationTarget,
+    message: Option<String>,
+}
+
+impl AuditViolation {
+    pub fn new(target: EvaluationTarget, policy: &String, message: Option<String>) -> AuditViolation {
+        AuditViolation { policy: policy.clone(), target, message: message }
+    }
+}
+
+struct Auditor {
     k8s_client: Client,
     policies: PolicyStoreRef,
     //event_sender: EventSender,
@@ -93,12 +132,13 @@ impl Auditor {
         }
     }
 
-    pub async fn audit_policies(
+    async fn audit_policies(
         &self,
         print_violations: bool,
         update_status: bool,
         all: bool,
-    ) -> Result<()> {
+    ) -> Result<Vec<AuditViolation>> {
+        let mut violations = Vec::new();
         let mut policies = Vec::new();
         // While holding the lock only collect the policies, directly auditing them would make the future of the method not implement Send which breaks the task spawn
         {
@@ -110,18 +150,20 @@ impl Auditor {
             }
         }
         for policy in policies.iter() {
-            if let Err(err) = self
-                .audit_policy(policy, print_violations, update_status)
-                .await
-            {
-                return Err(err);
+            match self.audit_policy(policy, print_violations, update_status).await {
+                Ok(mut result) => {
+                    violations.append(&mut result);
+                },
+                Err(err) => {
+                    return Err(err); 
+                }
             }
         }
         let now: DateTime<Utc> = SystemTime::now().into();
         NUM_CHECKED_POLICIES.set(policies.len() as f64);
         NUM_AUDIT_RUNS.inc();
         TIMESTAMP_LAST_RUN.set(now.timestamp() as f64);
-        Ok(())
+        Ok(violations)
     }
 
     async fn audit_policy(
@@ -129,14 +171,18 @@ impl Auditor {
         policy: &PolicyInfo,
         print_violations: bool,
         update_status: bool,
-    ) -> Result<()> {
-        println!("Auditing policy {}", policy.name);
+    ) -> Result<Vec<AuditViolation>> {
+        if print_violations {
+            println!("Auditing policy {}", policy.name);
+        }
         let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy).await;
         if !valid {
-            println!(
-                "Failed to validate policy: {}",
-                reason.unwrap_or_else(|| "N/A".to_string())
-            );
+            if print_violations {
+                println!(
+                    "Failed to validate policy: {}",
+                    reason.unwrap_or_else(|| "N/A".to_string())
+                );
+            }
             return Err(load_err("Policy is invalid"));
         }
         // collect all matching k8s resources
@@ -148,7 +194,7 @@ impl Auditor {
         }
 
         // audit all objects
-        let mut results = Vec::new();
+        let mut violations = Vec::new();
 
         for (resource_description, namespaced) in matched_resources.iter() {
             if *namespaced {
@@ -173,8 +219,7 @@ impl Auditor {
                             .await
                             .map_err(kube_err)?;
                         for object in objects {
-                            let target_identifier =
-                                gen_target_identifier(resource_description, &object);
+                            let target = EvaluationTarget::new(resource_description, &object);
                             let (result, message, _patch) =
                                 crate::evaluator::evaluate_policy_audit(policy, object);
                             NUM_CHECKED_OBJECTS
@@ -184,7 +229,7 @@ impl Auditor {
                                 NUM_VIOLATIONS
                                     .with_label_values(&[policy.name.as_str(), namespace.as_str()])
                                     .inc();
-                                results.push((target_identifier, message));
+                                violations.push(AuditViolation::new(target, &policy.name, message.clone()));
                             }
                         }
                     }
@@ -202,7 +247,7 @@ impl Auditor {
                     Err(err) => return Err(BridgekeeperError::KubernetesError(format!("{}", err))),
                 };
                 for object in objects {
-                    let target_identifier = gen_target_identifier(resource_description, &object);
+                    let target = EvaluationTarget::new(resource_description, &object);
                     let (result, message, _patch) =
                         crate::evaluator::evaluate_policy_audit(policy, object);
                     NUM_CHECKED_OBJECTS
@@ -212,31 +257,31 @@ impl Auditor {
                         NUM_VIOLATIONS
                             .with_label_values(&[policy.name.as_str(), ""])
                             .inc();
-                        results.push((target_identifier, message));
+                        violations.push(AuditViolation::new(target, &policy.name, message.clone()));
                     }
                 }
             }
         }
         if print_violations {
-            for (object, message) in results.iter() {
-                let message = match message {
+            for violation in violations.iter() {
+                let message = match violation.message.as_ref() {
                     Some(reason) => format!(": {}", reason),
                     None => String::new(),
                 };
-                println!("{} violates policy '{}'{}", object, policy.name, message);
+                println!("{} violates policy '{}'{}", violation.target.identifier(), policy.name, message);
             }
         }
         // Attach audit results to policy status
         if update_status {
-            self.report_result(policy.name.clone(), results).await?;
+            self.report_result(policy.name.clone(), &violations).await?;
         }
-        Ok(())
+        Ok(violations)
     }
 
     async fn report_result(
         &self,
         name: String,
-        results: Vec<(String, Option<String>)>,
+        results: &Vec<AuditViolation>,
     ) -> Result<()> {
         let api: Api<Policy> = Api::all(self.k8s_client.clone());
         let mut status = PolicyStatus::new();
@@ -250,8 +295,8 @@ impl Auditor {
         let mut violations = Vec::new();
         for result in results {
             let violation = Violation {
-                identifier: result.0,
-                message: result.1.unwrap_or_else(|| String::from("N/A")),
+                identifier: result.target.identifier(),
+                message: result.message.clone().unwrap_or_else(|| String::from("N/A")),
             };
             violations.push(violation);
         }
@@ -301,9 +346,12 @@ pub async fn run(args: Args) {
         .audit_policies(!args.silent, args.status, args.all)
         .await
     {
-        Ok(_) => {
+        Ok(violations) => {
             info!("Finished audit");
             LAST_AUDIT_RUN_SUCCESSFUL.set(1.0);
+            if args.json {
+                json_result(violations);
+            }
         }
         Err(err) => error!("Audit failed: {}", err),
     };
@@ -311,6 +359,12 @@ pub async fn run(args: Args) {
     // Push metrics
     let metric_families = prometheus::gather();
     push_metrics(metric_families).await;
+}
+
+
+fn json_result(violations: Vec<AuditViolation>) {
+    let json = serde_json::to_string(&violations).unwrap();
+    println!("{}", json);
 }
 
 pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interval: u32) {
