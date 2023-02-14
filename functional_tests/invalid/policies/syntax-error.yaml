@@ -1,0 +1,15 @@
+# Validates that policies with syntax errors in rule code are not accepted
+apiVersion: bridgekeeper.maibornwolff.de/v1alpha1
+kind: Policy
+metadata:
+  name: syntax-error
+spec:
+  enforce: true
+  target:
+    matches:
+      - apiGroup: ""
+        kind: "Service"
+  rule:
+    python: |
+      de validate(request):
+        return True

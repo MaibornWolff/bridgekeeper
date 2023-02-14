@@ -1,0 +1,16 @@
+# This test verifies if bridgekeeper can handle the core api group
+apiVersion: bridgekeeper.maibornwolff.de/v1alpha1
+kind: Policy
+metadata:
+  name: core-api-group
+spec:
+  enforce: true
+  audit: true
+  target:
+    matches:
+      - apiGroup: ""
+        kind: "Service"
+  rule:
+    python: |
+      def validate(request):
+        return False, "No services for testing"

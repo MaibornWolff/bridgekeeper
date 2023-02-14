@@ -3,7 +3,7 @@ use kube::{
     api::{Api, ListParams, Patch, PatchParams},
     core::ObjectList,
     Resource, Client,
-    core::{ApiResource as KubeApiResource, DynamicObject, GroupVersionKind},
+    core::{ApiResource as KubeApiResource, GroupVersionKind},
 };
 use lazy_static::lazy_static;
 use serde::{de::DeserializeOwned, Serialize};
@@ -153,17 +153,6 @@ pub fn gen_resource_description(
         kind: api_resource.kind.clone(),
     };
     KubeApiResource::from_gvk_with_plural(&gvk, &api_resource.name)
-}
-
-pub fn gen_target_identifier(resource: &KubeApiResource, object: &DynamicObject) -> String {
-    let meta = object.meta();
-    format!(
-        "{}/{}/{}/{}",
-        resource.group,
-        resource.kind,
-        meta.namespace.clone().unwrap_or_else(|| "-".to_string()),
-        meta.name.clone().expect("Each object has a name")
-    )
 }
 
 pub async fn namespaces(k8s_client: Client) -> Result<Vec<String>> {

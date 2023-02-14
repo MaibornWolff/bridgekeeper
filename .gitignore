@@ -1,3 +1,4 @@
 /target
 .certs
 .vscode
+functional_tests/kubeconfig

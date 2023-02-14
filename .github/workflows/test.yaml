@@ -1,0 +1,51 @@
+name: test
+on: [pull_request]
+
+
+jobs:
+  release:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Check out the repo
+        uses: actions/checkout@v2
+
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: "1.67.0"
+            override: true
+            components: clippy
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' 
+
+      - name: Setup k3d
+        uses: nolar/setup-k3d-k3s@v1
+        with:
+          version: v1.22
+          k3d-name: bridgekeeper-test
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Compile code
+        run: |
+          cargo build
+      
+      - name: Run unit tests
+        run: |
+          set -e
+          cargo test
+          
+      - name: Run functional tests
+        run: |
+          set -e
+          export DOCKER_IMAGE=bridgekeeper
+          export DOCKER_TAG=test
+          export DOCKER_VERSION=$DOCKER_IMAGE:$DOCKER_TAG
+          docker build . -t $DOCKER_VERSION
+          k3d image import -c bridgekeeper-test $DOCKER_VERSION
+          helm install --namespace bridgekeeper --create-namespace bridgekeeper ./charts/bridgekeeper --set image.repository=$DOCKER_IMAGE --set image.tag=$DOCKER_TAG --wait
+          cd functional_tests
+          python execute_tests.py
