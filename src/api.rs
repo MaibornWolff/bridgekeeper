@@ -73,8 +73,8 @@ async fn admission_mutate(
         })?;
     }
     if !allowed {
-        response.result.message = reason;
-        response.result.code = Some(403);
+        response.result.message = reason.unwrap_or_default();
+        response.result.code = 403;
     }
 
     let review = response.into_review();
@@ -97,8 +97,8 @@ async fn api_validate_policy(
     let (allowed, reason) = validate_policy_admission(&admission_request).await;
     response.allowed = allowed;
     if !allowed {
-        response.result.message = reason;
-        response.result.code = Some(403);
+        response.result.message = reason.unwrap_or_default();
+        response.result.code = 403;
     }
 
     let review = response.into_review();
