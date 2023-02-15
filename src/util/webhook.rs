@@ -1,5 +1,6 @@
 use crate::util::error::{kube_err, Result};
 use crate::{constants::*, util::cert::CertKeyPair, util::k8s::apply};
+use base64::{engine::general_purpose, Engine};
 use k8s_openapi::api::admissionregistration::v1::{
     MutatingWebhookConfiguration, ValidatingWebhookConfiguration,
 };
@@ -95,7 +96,10 @@ where
     let failure_policy = if strict_admission { "Fail" } else { "Ignore" };
     let namespace = std::env::var("NAMESPACE").unwrap_or_else(|_| "default".into());
     let mut webhook_data = webhook_data
-        .replace("<cadata>", &base64::encode(cert.cert.clone()))
+        .replace(
+            "<cadata>",
+            &general_purpose::STANDARD.encode(cert.cert.clone()),
+        )
         .replace("<namespace>", &namespace)
         .replace("<failure_policy>", failure_policy)
         .replace("<timeout_seconds>", timeout_seconds.to_string().as_str());
