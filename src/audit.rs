@@ -3,14 +3,16 @@ use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStoreRef};
 use crate::util::error::{kube_err, load_err, BridgekeeperError, Result};
-use crate::util::k8s::{list_with_retry, patch_status_with_retry, namespaces, find_k8s_resource_matches};
+use crate::util::k8s::{
+    find_k8s_resource_matches, list_with_retry, namespaces, patch_status_with_retry,
+};
 use argh::FromArgs;
 use k8s_openapi::chrono::{DateTime, Utc};
 use kube::Resource;
 use kube::{
     api::{Api, DynamicObject, ListParams, Patch, PatchParams},
     core::ApiResource as KubeApiResource,
-    Client, CustomResourceExt
+    Client, CustomResourceExt,
 };
 use lazy_static::lazy_static;
 use prometheus::proto::MetricFamily;
@@ -22,7 +24,7 @@ use serde_json::json;
 use std::time::SystemTime;
 use tokio::task;
 use tokio::time::{sleep, Duration};
-use tracing::{info, error};
+use tracing::{error, info};
 
 lazy_static! {
     static ref NUM_AUDIT_RUNS: Counter =
@@ -83,19 +85,28 @@ struct EvaluationTarget {
     api_group: String,
     kind: String,
     namespace: Option<String>,
-    name: String, 
+    name: String,
 }
 
 impl EvaluationTarget {
     pub fn new(resource: &KubeApiResource, object: &DynamicObject) -> EvaluationTarget {
         let meta = object.meta();
-        EvaluationTarget { api_group: resource.group.clone(), kind: resource.kind.clone(), namespace: meta.namespace.clone(), name: meta.name.clone().expect("Each object has a name") }
+        EvaluationTarget {
+            api_group: resource.group.clone(),
+            kind: resource.kind.clone(),
+            namespace: meta.namespace.clone(),
+            name: meta.name.clone().expect("Each object has a name"),
+        }
     }
 
     pub fn identifier(&self) -> String {
         format!(
             "{}/{}/{}/{}",
-            self.api_group, self.kind, self.namespace.clone().unwrap_or("-".to_string()), self.name)
+            self.api_group,
+            self.kind,
+            self.namespace.clone().unwrap_or("-".to_string()),
+            self.name
+        )
     }
 }
 
@@ -107,8 +118,16 @@ struct AuditViolation {
 }
 
 impl AuditViolation {
-    pub fn new(target: EvaluationTarget, policy: &String, message: Option<String>) -> AuditViolation {
-        AuditViolation { policy: policy.clone(), target, message: message }
+    pub fn new(
+        target: EvaluationTarget,
+        policy: &String,
+        message: Option<String>,
+    ) -> AuditViolation {
+        AuditViolation {
+            policy: policy.clone(),
+            target,
+            message,
+        }
     }
 }
 
@@ -150,12 +169,15 @@ impl Auditor {
             }
         }
         for policy in policies.iter() {
-            match self.audit_policy(policy, print_violations, update_status).await {
+            match self
+                .audit_policy(policy, print_violations, update_status)
+                .await
+            {
                 Ok(mut result) => {
                     violations.append(&mut result);
-                },
+                }
                 Err(err) => {
-                    return Err(err); 
+                    return Err(err);
                 }
             }
         }
@@ -189,7 +211,12 @@ impl Auditor {
         let namespaces = namespaces(self.k8s_client.clone()).await?;
         let mut matched_resources: Vec<(KubeApiResource, bool)> = Vec::new();
         for target_match in policy.policy.target.matches.iter() {
-            let mut result = find_k8s_resource_matches(&target_match.api_group, &target_match.kind, &self.k8s_client).await?;
+            let mut result = find_k8s_resource_matches(
+                &target_match.api_group,
+                &target_match.kind,
+                &self.k8s_client,
+            )
+            .await?;
             matched_resources.append(&mut result);
         }
 
@@ -229,7 +256,11 @@ impl Auditor {
                                 NUM_VIOLATIONS
                                     .with_label_values(&[policy.name.as_str(), namespace.as_str()])
                                     .inc();
-                                violations.push(AuditViolation::new(target, &policy.name, message.clone()));
+                                violations.push(AuditViolation::new(
+                                    target,
+                                    &policy.name,
+                                    message.clone(),
+                                ));
                             }
                         }
                     }
@@ -268,7 +299,12 @@ impl Auditor {
                     Some(reason) => format!(": {}", reason),
                     None => String::new(),
                 };
-                println!("{} violates policy '{}'{}", violation.target.identifier(), policy.name, message);
+                println!(
+                    "{} violates policy '{}'{}",
+                    violation.target.identifier(),
+                    policy.name,
+                    message
+                );
             }
         }
         // Attach audit results to policy status
@@ -278,11 +314,7 @@ impl Auditor {
         Ok(violations)
     }
 
-    async fn report_result(
-        &self,
-        name: String,
-        results: &Vec<AuditViolation>,
-    ) -> Result<()> {
+    async fn report_result(&self, name: String, results: &Vec<AuditViolation>) -> Result<()> {
         let api: Api<Policy> = Api::all(self.k8s_client.clone());
         let mut status = PolicyStatus::new();
         let mut audit_status = status
@@ -296,7 +328,10 @@ impl Auditor {
         for result in results {
             let violation = Violation {
                 identifier: result.target.identifier(),
-                message: result.message.clone().unwrap_or_else(|| String::from("N/A")),
+                message: result
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| String::from("N/A")),
             };
             violations.push(violation);
         }
@@ -360,7 +395,6 @@ pub async fn run(args: Args) {
     let metric_families = prometheus::gather();
     push_metrics(metric_families).await;
 }
-
 
 fn json_result(violations: Vec<AuditViolation>) {
     let json = serde_json::to_string(&violations).unwrap();

@@ -1,12 +1,16 @@
 use crate::{
     crd::{Policy, PolicySpec},
     events::{EventSender, PolicyEvent, PolicyEventData},
-    policy::{PolicyInfo, PolicyStoreRef}, util::k8s::find_k8s_resource_matches,
+    policy::{PolicyInfo, PolicyStoreRef},
+    util::k8s::find_k8s_resource_matches,
 };
-use kube::{core::{
-    admission::{self, Operation},
-    DynamicObject,
-}, Client};
+use kube::{
+    core::{
+        admission::{self, Operation},
+        DynamicObject,
+    },
+    Client,
+};
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
@@ -178,9 +182,7 @@ impl PolicyEvaluator {
                 let reason = res.1.unwrap_or_else(|| "-".to_string());
                 info!(
                     "Policy '{}' evaluates to {} with message '{}'",
-                    value.name,
-                    res.0,
-                    reason,
+                    value.name, res.0, reason,
                 );
                 if value.policy.enforce.unwrap_or(true) {
                     // If one policy fails no need to evaluate the others
@@ -222,21 +224,27 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<S
     let client = Client::try_default()
         .await
         .expect("failed to create kube client");
-    
+
     // Iterate through match items and check whether specified resources exist in the cluster
     for match_item in policy.target.matches.iter() {
-        let api_resource_exists = match find_k8s_resource_matches(&match_item.api_group, &match_item.kind, &client).await {
-            Ok(resources) => {
-                !resources.is_empty()
-            },
-            Err(_) => false
-        };
+        let api_resource_exists =
+            match find_k8s_resource_matches(&match_item.api_group, &match_item.kind, &client).await
+            {
+                Ok(resources) => !resources.is_empty(),
+                Err(_) => false,
+            };
 
-        if ! api_resource_exists {
-            return (false, Some(format!("Specified target {}/{} is not available", match_item.api_group, match_item.kind)))
+        if !api_resource_exists {
+            return (
+                false,
+                Some(format!(
+                    "Specified target {}/{} is not available",
+                    match_item.api_group, match_item.kind
+                )),
+            );
         }
     }
-    
+
     let python_code = policy.rule.python.clone();
     Python::with_gil(|py| {
         if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {

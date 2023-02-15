@@ -71,9 +71,7 @@ impl Manager {
                                         policy_reference: ref_info,
                                         event_data: PolicyEventData::Loaded,
                                     })
-                                    .unwrap_or_else(|err| {
-                                        warn!("Could not send event: {:?}", err)
-                                    });
+                                    .unwrap_or_else(|err| warn!("Could not send event: {:?}", err));
                             }
                         }
                         Event::Deleted(policy) => {
