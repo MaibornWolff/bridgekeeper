@@ -27,13 +27,13 @@ spec:
               enforce:
                 nullable: true
                 type: boolean
-              modules:
-                items:
-                  type: string
-                nullable: true
-                type: array
               rule:
                 properties:
+                  modules:
+                    items:
+                      type: string
+                    nullable: true
+                    type: array
                   python:
                     type: string
                 required:
