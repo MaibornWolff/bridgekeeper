@@ -9,7 +9,7 @@ pub struct ObjectReference {
 }
 
 impl ObjectReference {
-    pub fn to_object_reference(&self) -> KubeObjectReference {
+    pub fn to_k8s_object_reference(&self) -> KubeObjectReference {
         KubeObjectReference {
             api_version: self.api_version.clone(),
             kind: self.kind.clone(),

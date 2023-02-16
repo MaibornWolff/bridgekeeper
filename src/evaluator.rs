@@ -152,7 +152,7 @@ impl PolicyEvaluator {
 
             let mut module_code = String::new();
 
-            if let Some(used_modules) = &value.policy.modules {
+            if let Some(used_modules) = &value.policy.rule.modules {
                 for module_name in used_modules.iter() {
                     match modules.get_objects().get(module_name) {
                         Some(module_info) => {
@@ -160,7 +160,12 @@ impl PolicyEvaluator {
                             module_code.push_str("\n");
                         },
                         None => {
-                            log::warn!("Could not find module '{}'", module_name)
+                            return EvaluationResult {
+                                allowed: false,
+                                patch: None,
+                                reason: Some(format!("Could not find module '{}'", module_name)),
+                                warnings
+                            }
                         }
                     };
                 }
@@ -179,9 +184,9 @@ impl PolicyEvaluator {
                     object_reference: value.ref_info.clone(),
                     event_data: EventType::Policy(
                         PolicyEventData::Evaluated {
-                        target_identifier,
-                        result: res.0,
-                        reason: res.1.clone(),
+                            target_identifier,
+                            result: res.0,
+                            reason: res.1.clone(),
                         }
                     ),
                 })
@@ -228,23 +233,42 @@ impl PolicyEvaluator {
 
     pub fn get_available_modules(&self) -> HashMap<String, ModuleInfo> {
         let module_store = self.modules.lock().expect("lock failed. Cannot continue");
-        
+
         return module_store.get_objects();
     }
-}
 
-pub fn validate_policy_admission(
-    request: &admission::AdmissionRequest<Policy>,
-    module_code: &str
-) -> (bool, Option<String>) {
-    if let Some(policy) = request.object.as_ref() {
-        let name = match policy.metadata.name.as_ref() {
-            Some(name) => name.as_str(),
-            None => "-invalidname-",
-        };
-        validate_policy(name, &policy.spec, module_code)
-    } else {
-        (false, Some("No rule found".to_string()))
+    pub fn validate_policy_admission(
+        &self,
+        request: &admission::AdmissionRequest<Policy>
+    ) -> (bool, Option<String>) {
+        if let Some(policy) = request.object.as_ref() {
+            let name = match policy.metadata.name.as_ref() {
+                Some(name) => name.as_str(),
+                None => "-invalidname-",
+            };
+
+            let mut module_code = String::new();
+
+            if let Some(used_modules) = policy.spec.rule.modules.clone() {
+                let modules = self.get_available_modules();
+
+                for module_name in used_modules.iter() {
+                    match modules.get(module_name) {
+                        Some(module_info) => {
+                            module_code.push_str(&module_info.module.python);
+                            module_code.push_str("\n");
+                        },
+                        None => {
+                            log::warn!("Could not find module '{}'", module_name)
+                        }
+                    };
+                }
+            }
+
+            validate_policy(name, &policy.spec, &module_code)
+        } else {
+            (false, Some("No rule found".to_string()))
+        }
     }
 }
 

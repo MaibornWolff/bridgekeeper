@@ -48,7 +48,7 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
             let mut kube_event = KubeEvent::default();
 
             kube_event.metadata.generate_name = event.object_reference.name.clone();
-            kube_event.involved_object = event.object_reference.to_object_reference();
+            kube_event.involved_object = event.object_reference.to_k8s_object_reference();
             kube_event.type_ = Some("Normal".to_string());
             kube_event.first_timestamp = Some(Time(Utc::now()));
             kube_event.source = Some(KubeEventSource {

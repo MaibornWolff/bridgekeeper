@@ -148,7 +148,7 @@ impl Auditor {
 
         let mut module_code = String::new();
 
-        if let Some(used_modules) = &policy.policy.modules {
+        if let Some(used_modules) = &policy.policy.rule.modules {
             for module_name in used_modules.iter() {
                 match modules.get(module_name) {
                     Some(module_info) => {

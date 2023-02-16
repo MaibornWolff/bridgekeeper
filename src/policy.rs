@@ -1,5 +1,4 @@
 use crate::crd::{Policy, PolicySpec};
-use crate::util::traits::ObjectStore;
 use crate::util::error::{load_err, Result};
 use crate::util::types::ObjectReference;
 use kube::api::GroupVersionKind;
@@ -20,7 +19,7 @@ pub struct PolicyStore {
     pub policies: HashMap<String, PolicyInfo>,
 }
 
-pub type PolicyStoreRef = Arc<Mutex<dyn ObjectStore<Policy, HashMap<String, PolicyInfo>> + Send>>;
+pub type PolicyStoreRef = Arc<Mutex<PolicyStore>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PolicyInfo {
@@ -35,6 +34,38 @@ impl PolicyStore {
             policies: HashMap::new(),
         };
         Arc::new(Mutex::new(store))
+    }
+
+    pub fn add_object(&mut self, policy: Policy) -> Option<ObjectReference> {
+        let ref_info = create_object_reference(&policy);
+        let name = policy.metadata.name.expect("name is always set");
+        if let Some(existing_policy_info) = self.policies.get(&name) {
+            if existing_policy_info.policy != policy.spec {
+                let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
+                log::info!("Policy '{}' updated", name);
+                self.policies.insert(name, policy_info);
+                Some(ref_info)
+            } else {
+                None
+            }
+        } else {
+            let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
+            log::info!("Policy '{}' added", name);
+            self.policies.insert(name, policy_info);
+            ACTIVE_POLICIES.inc();
+            Some(ref_info)
+        }
+    }
+
+    pub fn remove_object(&mut self, policy: Policy) {
+        let name = policy.metadata.name.expect("name is always set");
+        log::info!("Policy '{}' removed", name);
+        self.policies.remove(&name);
+        ACTIVE_POLICIES.dec();
+    }
+
+    pub fn get_objects(&self) -> HashMap<String, PolicyInfo> {
+        return self.policies.clone();
     }
 }
 
@@ -91,40 +122,6 @@ impl PolicyInfo {
         } else {
             true
         }
-    }
-}
-
-impl ObjectStore<Policy, HashMap<String, PolicyInfo>> for PolicyStore {
-    fn add_object(&mut self, policy: Policy) -> Option<ObjectReference> {
-        let ref_info = create_object_reference(&policy);
-        let name = policy.metadata.name.expect("name is always set");
-        if let Some(existing_policy_info) = self.policies.get(&name) {
-            if existing_policy_info.policy != policy.spec {
-                let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
-                log::info!("Policy '{}' updated", name);
-                self.policies.insert(name, policy_info);
-                Some(ref_info)
-            } else {
-                None
-            }
-        } else {
-            let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
-            log::info!("Policy '{}' added", name);
-            self.policies.insert(name, policy_info);
-            ACTIVE_POLICIES.inc();
-            Some(ref_info)
-        }
-    }
-
-    fn remove_object(&mut self, policy: Policy) {
-        let name = policy.metadata.name.expect("name is always set");
-        log::info!("Policy '{}' removed", name);
-        self.policies.remove(&name);
-        ACTIVE_POLICIES.dec();
-    }
-
-    fn get_objects(&self) -> HashMap<String, PolicyInfo> {
-        return self.policies.clone();
     }
 }
 

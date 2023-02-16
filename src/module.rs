@@ -1,5 +1,4 @@
 use crate::crd::{Module, ModuleSpec};
-use crate::util::traits::ObjectStore;
 use crate::util::types::ObjectReference;
 use kube::core::Resource;
 use lazy_static::lazy_static;
@@ -17,7 +16,7 @@ pub struct ModuleStore {
     pub modules: HashMap<String, ModuleInfo>,
 }
 
-pub type ModuleStoreRef = Arc<Mutex<dyn ObjectStore<Module, HashMap<String, ModuleInfo>> + Send>>;
+pub type ModuleStoreRef = Arc<Mutex<ModuleStore>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleInfo {
@@ -33,29 +32,8 @@ impl ModuleStore {
         };
         Arc::new(Mutex::new(store))
     }
-}
 
-fn create_object_reference(obj: &Module) -> ObjectReference {
-    ObjectReference {
-        api_version: Some(Module::api_version(&()).to_string()),
-        kind: Some(Module::kind(&()).to_string()),
-        name: obj.metadata.name.clone(),
-        uid: obj.metadata.uid.clone(),
-    }
-}
-
-impl ModuleInfo {
-    pub fn new(name: String, module: ModuleSpec, ref_info: ObjectReference) -> ModuleInfo {
-        ModuleInfo {
-            name,
-            module,
-            ref_info,
-        }
-    }
-}
-
-impl ObjectStore<Module, HashMap<String, ModuleInfo>> for ModuleStore {
-    fn add_object(&mut self, module: Module) -> Option<ObjectReference> {
+    pub fn add_object(&mut self, module: Module) -> Option<ObjectReference> {
         let ref_info = create_object_reference(&module);
         let name = module.metadata.name.expect("name is always set");
         if let Some(existing_module_info) = self.modules.get(&name) {
@@ -76,14 +54,33 @@ impl ObjectStore<Module, HashMap<String, ModuleInfo>> for ModuleStore {
         }
     }
 
-    fn remove_object(&mut self, module: Module) {
+    pub fn remove_object(&mut self, module: Module) {
         let name = module.metadata.name.expect("name is always set");
         log::info!("Module '{}' removed", name);
         self.modules.remove(&name);
         ACTIVE_MODULES.dec();
     }
 
-    fn get_objects(&self) -> HashMap<String, ModuleInfo> {
+    pub fn get_objects(&self) -> HashMap<String, ModuleInfo> {
         return self.modules.clone();
+    }
+}
+
+fn create_object_reference(obj: &Module) -> ObjectReference {
+    ObjectReference {
+        api_version: Some(Module::api_version(&()).to_string()),
+        kind: Some(Module::kind(&()).to_string()),
+        name: obj.metadata.name.clone(),
+        uid: obj.metadata.uid.clone(),
+    }
+}
+
+impl ModuleInfo {
+    pub fn new(name: String, module: ModuleSpec, ref_info: ObjectReference) -> ModuleInfo {
+        ModuleInfo {
+            name,
+            module,
+            ref_info,
+        }
     }
 }

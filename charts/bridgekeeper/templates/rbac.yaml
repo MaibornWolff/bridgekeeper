@@ -5,7 +5,7 @@ metadata:
     {{- include "bridgekeeper.labels" . | nindent 4 }}
   name: bridgekeeper-role
 rules:
-# During audit runs bridgekeeper needs to potentially access all resources in the cluster 
+# During audit runs bridgekeeper needs to potentially access all resources in the cluster
 - apiGroups:
   - '*'
   resources:
@@ -42,6 +42,8 @@ rules:
   resources:
   - policies
   - policies/status
+  - modules
+  - modules/status
   verbs:
   - patch
   - update

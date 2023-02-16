@@ -16,7 +16,6 @@ pub struct PolicySpec {
     pub rule: Rule,
     pub audit: Option<bool>,
     pub enforce: Option<bool>,
-    pub modules: Option<Vec<String>>,
 }
 
 #[derive(
@@ -50,6 +49,7 @@ pub struct Match {
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
     pub python: String,
+    pub modules: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
@@ -118,7 +118,6 @@ impl PolicySpec {
             enforce: Some(true),
             target,
             rule: Default::default(),
-            modules: None,
         }
     }
 
@@ -127,8 +126,7 @@ impl PolicySpec {
             audit: Some(false),
             enforce: Some(true),
             target: Default::default(),
-            rule: Rule { python },
-            modules: None,
+            rule: Rule { python, modules: None },
         }
     }
 }
