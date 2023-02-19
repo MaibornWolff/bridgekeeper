@@ -60,6 +60,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.name
+            {{- if .Values.bridgekeeper.logging.mode }}
+            - name: LOGGING_MODE
+              value: {{ .Values.bridgekeeper.logging.mode }}
+            {{- end }}
           volumeMounts:
             - mountPath: /certs
               name: cert

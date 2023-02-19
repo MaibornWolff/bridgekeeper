@@ -89,7 +89,9 @@ impl PolicyInfo {
 
     pub fn is_match(&self, gvk: &GroupVersionKind, namespace: &Option<String>) -> bool {
         for kind in self.policy.target.matches.iter() {
-            if (kind.api_group == "*" || kind.api_group.to_lowercase() == gvk.group.to_lowercase())
+            let api_group = kind.api_group.as_str();
+
+            if (api_group == "*" || api_group.to_lowercase() == gvk.group.to_lowercase())
                 && (kind.kind == "*" || kind.kind.to_lowercase() == gvk.kind.to_lowercase())
             {
                 if let Some(target_namespace) = namespace {

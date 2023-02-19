@@ -1,0 +1,21 @@
+# Simple test if policies are checked
+apiVersion: bridgekeeper.maibornwolff.de/v1alpha1
+kind: Policy
+metadata:
+  name: no-latest-tag
+spec:
+  enforce: true
+  audit: true
+  target:
+    matches:
+      - apiGroup: apps
+        kind: "Deployment"
+  rule:
+    python: |
+      def validate(request):
+        pod_spec = request["object"]["spec"]["template"]["spec"]
+        for container in pod_spec["containers"]:
+          image = container["image"]
+          if not ":" in image or image.split(":")[-1] == "latest":
+            return False, f"Container {container['name']} refers to a latest image"
+        return True
