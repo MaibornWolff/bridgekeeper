@@ -1,5 +1,5 @@
 use crate::crd::Policy;
-use crate::evaluator::{validate_policy_admission, EvaluationResult, PolicyEvaluatorRef};
+use crate::evaluator::{EvaluationResult, PolicyEvaluatorRef};
 use crate::util::cert::CertKeyPair;
 use kube::{
     api::DynamicObject,
@@ -84,6 +84,7 @@ async fn admission_mutate(
 #[rocket::post("/validate-policy", data = "<data>")]
 async fn api_validate_policy(
     data: Json<AdmissionReview<Policy>>,
+    evaluator: &State<PolicyEvaluatorRef>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, ApiError> {
     HTTP_REQUEST_COUNTER
         .with_label_values(&["/validate-policy"])
@@ -94,7 +95,7 @@ async fn api_validate_policy(
     })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let (allowed, reason) = validate_policy_admission(&admission_request).await;
+    let (allowed, reason) = evaluator.validate_policy_admission(&admission_request);
     response.allowed = allowed;
     if !allowed {
         response.result.message = reason.unwrap_or_default();

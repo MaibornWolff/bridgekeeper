@@ -1,5 +1,4 @@
 {{- if .Values.installCRDs }}
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -14,88 +13,129 @@ spec:
     singular: policy
   scope: Cluster
   versions:
-    - additionalPrinterColumns: []
-      name: v1alpha1
-      schema:
-        openAPIV3Schema:
-          description: "Auto-generated derived type for PolicySpec via `CustomResource`"
-          properties:
-            spec:
-              properties:
-                audit:
-                  nullable: true
-                  type: boolean
-                enforce:
-                  nullable: true
-                  type: boolean
-                rule:
-                  properties:
-                    python:
+  - additionalPrinterColumns: []
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PolicySpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              audit:
+                nullable: true
+                type: boolean
+              enforce:
+                nullable: true
+                type: boolean
+              rule:
+                properties:
+                  modules:
+                    items:
                       type: string
-                  required:
-                    - python
-                  type: object
-                target:
-                  properties:
-                    excludedNamespaces:
-                      items:
-                        type: string
-                      nullable: true
-                      type: array
-                    matches:
-                      items:
-                        properties:
-                          apiGroup:
-                            type: string
-                          kind:
-                            type: string
-                        required:
-                          - apiGroup
-                          - kind
-                        type: object
-                      type: array
-                    namespaces:
-                      items:
-                        type: string
-                      nullable: true
-                      type: array
-                  required:
-                    - matches
-                  type: object
-              required:
-                - rule
-                - target
-              type: object
-            status:
-              nullable: true
-              properties:
-                audit:
-                  nullable: true
-                  properties:
-                    timestamp:
-                      nullable: true
+                    nullable: true
+                    type: array
+                  python:
+                    type: string
+                required:
+                - python
+                type: object
+              target:
+                properties:
+                  excludedNamespaces:
+                    items:
                       type: string
-                    violations:
-                      items:
-                        properties:
-                          identifier:
-                            type: string
-                          message:
-                            type: string
-                        required:
-                          - identifier
-                          - message
-                        type: object
-                      nullable: true
-                      type: array
-                  type: object
-              type: object
-          required:
-            - spec
-          title: Policy
-          type: object
-      served: true
-      storage: true
-      subresources:
-        status: {}
+                    nullable: true
+                    type: array
+                  matches:
+                    items:
+                      properties:
+                        apiGroup:
+                          type: string
+                        kind:
+                          type: string
+                      required:
+                      - apiGroup
+                      - kind
+                      type: object
+                    type: array
+                  namespaces:
+                    items:
+                      type: string
+                    nullable: true
+                    type: array
+                required:
+                - matches
+                type: object
+            required:
+            - rule
+            - target
+            type: object
+          status:
+            nullable: true
+            properties:
+              audit:
+                nullable: true
+                properties:
+                  timestamp:
+                    nullable: true
+                    type: string
+                  violations:
+                    items:
+                      properties:
+                        identifier:
+                          type: string
+                        message:
+                          type: string
+                      required:
+                      - identifier
+                      - message
+                      type: object
+                    nullable: true
+                    type: array
+                type: object
+            type: object
+        required:
+        - spec
+        title: Policy
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: modules.bridgekeeper.maibornwolff.de
+spec:
+  group: bridgekeeper.maibornwolff.de
+  names:
+    categories: []
+    kind: Module
+    plural: modules
+    shortNames: []
+    singular: module
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns: []
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ModuleSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              python:
+                type: string
+            required:
+            - python
+            type: object
+        required:
+        - spec
+        title: Module
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+---
 {{- end }}

@@ -1,6 +1,7 @@
 use crate::crd::{Policy, PolicyStatus, Violation};
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
+use crate::module::{ModuleStore, ModuleStoreRef, ModuleInfo};
 use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStoreRef};
 use crate::util::error::{kube_err, load_err, BridgekeeperError, Result};
 use crate::util::k8s::{
@@ -21,6 +22,7 @@ use prometheus::{
 };
 use serde::Serialize;
 use serde_json::json;
+use std::collections::HashMap;
 use std::time::SystemTime;
 use tokio::task;
 use tokio::time::{sleep, Duration};
@@ -134,6 +136,7 @@ impl AuditViolation {
 struct Auditor {
     k8s_client: Client,
     policies: PolicyStoreRef,
+    modules: ModuleStoreRef,
     //event_sender: EventSender,
 }
 
@@ -141,12 +144,14 @@ impl Auditor {
     pub fn new(
         client: Client,
         policies: PolicyStoreRef,
+        modules: ModuleStoreRef,
         //event_sender: EventSender,
     ) -> Auditor {
         pyo3::prepare_freethreaded_python();
         Auditor {
             k8s_client: client,
             policies,
+            modules,
             //event_sender,
         }
     }
@@ -159,18 +164,25 @@ impl Auditor {
     ) -> Result<Vec<AuditViolation>> {
         let mut violations = Vec::new();
         let mut policies = Vec::new();
-        // While holding the lock only collect the policies, directly auditing them would make the future of the method not implement Send which breaks the task spawn
+        let mut modules = HashMap::new();
+        // While holding the lock only collect the policies or modules, directly auditing them would make the future of the method not implement Send which breaks the task spawn
         {
             let policy_store = self.policies.lock().expect("lock failed. Cannot continue");
-            for policy in policy_store.policies.values() {
+            for policy in policy_store.get_objects().values() {
                 if all || policy.policy.audit.unwrap_or(false) {
                     policies.push(policy.clone());
                 }
             }
         }
+
+        {
+            let module_store = self.modules.lock().expect("lock failed. Cannot continue");
+            modules.extend(module_store.get_objects());
+        }
+
         for policy in policies.iter() {
             match self
-                .audit_policy(policy, print_violations, update_status)
+                .audit_policy(policy, &modules, print_violations, update_status)
                 .await
             {
                 Ok(mut result) => {
@@ -191,13 +203,31 @@ impl Auditor {
     async fn audit_policy(
         &self,
         policy: &PolicyInfo,
+        modules: &HashMap<String, ModuleInfo>,
         print_violations: bool,
         update_status: bool,
     ) -> Result<Vec<AuditViolation>> {
         if print_violations {
             println!("Auditing policy {}", policy.name);
         }
-        let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy).await;
+
+        let mut module_code = String::new();
+
+        if let Some(used_modules) = &policy.policy.rule.modules {
+            for module_name in used_modules.iter() {
+                match modules.get(module_name) {
+                    Some(module_info) => {
+                        module_code.push_str(&module_info.module.python);
+                        module_code.push_str("\n");
+                    },
+                    None => {
+                        log::warn!("Could not find module '{}'", module_name);
+                    }
+                };
+            }
+        }
+
+        let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy, &module_code);
         if !valid {
             if print_violations {
                 println!(
@@ -248,7 +278,7 @@ impl Auditor {
                         for object in objects {
                             let target = EvaluationTarget::new(resource_description, &object);
                             let (result, message, _patch) =
-                                crate::evaluator::evaluate_policy_audit(policy, object);
+                                crate::evaluator::evaluate_policy_audit(policy, object, &module_code);
                             NUM_CHECKED_OBJECTS
                                 .with_label_values(&[policy.name.as_str(), namespace.as_str()])
                                 .inc();
@@ -280,7 +310,7 @@ impl Auditor {
                 for object in objects {
                     let target = EvaluationTarget::new(resource_description, &object);
                     let (result, message, _patch) =
-                        crate::evaluator::evaluate_policy_audit(policy, object);
+                        crate::evaluator::evaluate_policy_audit(policy, object, &module_code);
                     NUM_CHECKED_OBJECTS
                         .with_label_values(&[policy.name.as_str(), ""])
                         .inc();
@@ -362,6 +392,7 @@ pub async fn run(args: Args) {
         .await
         .expect("Fail early if kube client cannot be created");
     let policies = PolicyStore::new();
+    let modules = ModuleStore::new();
     let event_sender = init_event_watcher(&client);
     // Load policies either from kubernetes or from file
     if !args.file.is_empty() {
@@ -369,14 +400,18 @@ pub async fn run(args: Args) {
             load_policies_from_file(policies.clone(), filename).expect("failed to load policy");
         }
     } else {
-        let mut manager = Manager::new(client.clone(), policies.clone(), event_sender.clone());
+        let mut manager = Manager::new(client.clone(), policies.clone(), modules.clone(), event_sender.clone());
         manager
             .load_existing_policies()
             .await
             .expect("Could not load existing policies");
+        manager
+            .load_existing_modules()
+            .await
+            .expect("Could not load existing policies");
     }
     // Run audit
-    let auditor = Auditor::new(client, policies);
+    let auditor = Auditor::new(client, policies, modules);
     match auditor
         .audit_policies(!args.silent, args.status, args.all)
         .await
@@ -401,9 +436,9 @@ fn json_result(violations: Vec<AuditViolation>) {
     println!("{}", json);
 }
 
-pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interval: u32) {
+pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, modules: ModuleStoreRef, interval: u32) {
     task::spawn(async move {
-        let auditor = Auditor::new(client, policies);
+        let auditor = Auditor::new(client, policies, modules);
         loop {
             sleep(Duration::from_secs(interval as u64)).await;
             info!("Starting audit run");

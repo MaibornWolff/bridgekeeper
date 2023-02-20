@@ -1,6 +1,6 @@
 use crate::crd::{Policy, PolicySpec};
 use crate::util::error::{load_err, Result};
-use k8s_openapi::api::core::v1::ObjectReference as KubeObjectReference;
+use crate::util::types::ObjectReference;
 use kube::api::GroupVersionKind;
 use kube::core::Resource;
 use lazy_static::lazy_static;
@@ -8,7 +8,6 @@ use prometheus::{register_gauge, Gauge};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tracing::info;
 
 lazy_static! {
     static ref ACTIVE_POLICIES: Gauge =
@@ -26,27 +25,7 @@ pub type PolicyStoreRef = Arc<Mutex<PolicyStore>>;
 pub struct PolicyInfo {
     pub name: String,
     pub policy: PolicySpec,
-    pub ref_info: PolicyObjectReference,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct PolicyObjectReference {
-    pub api_version: Option<String>,
-    pub kind: Option<String>,
-    pub name: Option<String>,
-    pub uid: Option<String>,
-}
-
-impl PolicyObjectReference {
-    pub fn to_object_reference(&self) -> KubeObjectReference {
-        KubeObjectReference {
-            api_version: self.api_version.clone(),
-            kind: self.kind.clone(),
-            name: self.name.clone(),
-            uid: self.uid.clone(),
-            ..Default::default()
-        }
-    }
+    pub ref_info: ObjectReference,
 }
 
 impl PolicyStore {
@@ -56,10 +35,42 @@ impl PolicyStore {
         };
         Arc::new(Mutex::new(store))
     }
+
+    pub fn add_object(&mut self, policy: Policy) -> Option<ObjectReference> {
+        let ref_info = create_object_reference(&policy);
+        let name = policy.metadata.name.expect("name is always set");
+        if let Some(existing_policy_info) = self.policies.get(&name) {
+            if existing_policy_info.policy != policy.spec {
+                let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
+                log::info!("Policy '{}' updated", name);
+                self.policies.insert(name, policy_info);
+                Some(ref_info)
+            } else {
+                None
+            }
+        } else {
+            let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
+            log::info!("Policy '{}' added", name);
+            self.policies.insert(name, policy_info);
+            ACTIVE_POLICIES.inc();
+            Some(ref_info)
+        }
+    }
+
+    pub fn remove_object(&mut self, policy: Policy) {
+        let name = policy.metadata.name.expect("name is always set");
+        log::info!("Policy '{}' removed", name);
+        self.policies.remove(&name);
+        ACTIVE_POLICIES.dec();
+    }
+
+    pub fn get_objects(&self) -> HashMap<String, PolicyInfo> {
+        return self.policies.clone();
+    }
 }
 
-fn create_object_reference(obj: &Policy) -> PolicyObjectReference {
-    PolicyObjectReference {
+fn create_object_reference(obj: &Policy) -> ObjectReference {
+    ObjectReference {
         api_version: Some(Policy::api_version(&()).to_string()),
         kind: Some(Policy::kind(&()).to_string()),
         name: obj.metadata.name.clone(),
@@ -68,7 +79,7 @@ fn create_object_reference(obj: &Policy) -> PolicyObjectReference {
 }
 
 impl PolicyInfo {
-    pub fn new(name: String, policy: PolicySpec, ref_info: PolicyObjectReference) -> PolicyInfo {
+    pub fn new(name: String, policy: PolicySpec, ref_info: ObjectReference) -> PolicyInfo {
         PolicyInfo {
             name,
             policy,
@@ -116,36 +127,6 @@ impl PolicyInfo {
     }
 }
 
-impl PolicyStore {
-    pub fn add_policy(&mut self, policy: Policy) -> Option<PolicyObjectReference> {
-        let ref_info = create_object_reference(&policy);
-        let name = policy.metadata.name.expect("name is always set");
-        if let Some(existing_policy_info) = self.policies.get(&name) {
-            if existing_policy_info.policy != policy.spec {
-                let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
-                info!("Policy '{}' updated", name);
-                self.policies.insert(name, policy_info);
-                Some(ref_info)
-            } else {
-                None
-            }
-        } else {
-            let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
-            info!("Policy '{}' added", name);
-            self.policies.insert(name, policy_info);
-            ACTIVE_POLICIES.inc();
-            Some(ref_info)
-        }
-    }
-
-    pub fn remove_policy(&mut self, policy: Policy) {
-        let name = policy.metadata.name.expect("name is always set");
-        info!("Policy '{}' removed", name);
-        self.policies.remove(&name);
-        ACTIVE_POLICIES.dec();
-    }
-}
-
 pub fn load_policies_from_file(policies: PolicyStoreRef, filename: &str) -> Result<usize> {
     let mut policies = policies.lock().expect("Lock failed");
     let data = std::fs::read_to_string(filename).map_err(load_err)?;
@@ -153,7 +134,7 @@ pub fn load_policies_from_file(policies: PolicyStoreRef, filename: &str) -> Resu
     let mut count = 0;
     for document in serde_yaml::Deserializer::from_str(&data) {
         let policy = Policy::deserialize(document).map_err(load_err)?;
-        policies.add_policy(policy);
+        policies.add_object(policy);
         count += 1;
     }
     Ok(count)

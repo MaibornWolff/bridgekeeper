@@ -11,6 +11,7 @@ mod events;
 mod helper;
 mod manager;
 mod policy;
+mod module;
 mod server;
 mod util;
 

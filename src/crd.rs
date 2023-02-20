@@ -18,6 +18,18 @@ pub struct PolicySpec {
     pub enforce: Option<bool>,
 }
 
+#[derive(
+    CustomResource, Serialize, Deserialize, Debug, Default, Clone, Hash, PartialEq, Eq, JsonSchema,
+)]
+#[kube(
+    group = "bridgekeeper.maibornwolff.de",
+    version = "v1alpha1",
+    kind = "Module"
+)]
+pub struct ModuleSpec {
+    pub python: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Hash, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Target {
@@ -37,6 +49,7 @@ pub struct Match {
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
     pub python: String,
+    pub modules: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
@@ -113,7 +126,7 @@ impl PolicySpec {
             audit: Some(false),
             enforce: Some(true),
             target: Default::default(),
-            rule: Rule { python },
+            rule: Rule { python, modules: None },
         }
     }
 }

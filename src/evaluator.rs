@@ -1,21 +1,20 @@
 use crate::{
     crd::{Policy, PolicySpec},
-    events::{EventSender, PolicyEvent, PolicyEventData},
+    events::{EventSender, Event, PolicyEventData, EventType},
     policy::{PolicyInfo, PolicyStoreRef},
-    util::k8s::find_k8s_resource_matches,
+    module::{ModuleStoreRef, ModuleInfo},
 };
 use kube::{
     core::{
         admission::{self, Operation},
         DynamicObject,
     },
-    Client,
 };
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
 use serde_derive::Serialize;
-use std::sync::Arc;
+use std::{sync::Arc, collections::HashMap};
 use tracing::{info, warn};
 
 lazy_static! {
@@ -74,6 +73,7 @@ impl ValidationRequest {
 
 pub struct PolicyEvaluator {
     policies: PolicyStoreRef,
+    modules: ModuleStoreRef,
     event_sender: EventSender,
 }
 
@@ -87,9 +87,10 @@ pub struct EvaluationResult {
 pub type PolicyEvaluatorRef = Arc<PolicyEvaluator>;
 
 impl PolicyEvaluator {
-    pub fn new(policies: PolicyStoreRef, event_sender: EventSender) -> PolicyEvaluatorRef {
+    pub fn new(policies: PolicyStoreRef, modules: ModuleStoreRef, event_sender: EventSender) -> PolicyEvaluatorRef {
         let evaluator = PolicyEvaluator {
             policies,
+            modules,
             event_sender,
         };
         pyo3::prepare_freethreaded_python();
@@ -116,11 +117,13 @@ impl PolicyEvaluator {
             }
         };
         let policies = self.policies.lock().expect("lock failed. Cannot continue");
+        let modules = self.modules.lock().expect("lock failed. Cannot continue");
+
 
         let mut matching_policies = Vec::new();
 
         // Collect all matching policies
-        for value in policies.policies.values() {
+        for value in policies.get_objects().values() {
             if value.is_match(&gvk, &namespace) {
                 MATCHED_POLICIES
                     .with_label_values(&[value.name.as_str()])
@@ -149,7 +152,29 @@ impl PolicyEvaluator {
                 namespace.clone().unwrap_or_else(|| "-".to_string()),
                 name
             );
-            let res = evaluate_policy(value, &request);
+
+            let mut module_code = String::new();
+
+            if let Some(used_modules) = &value.policy.rule.modules {
+                for module_name in used_modules.iter() {
+                    match modules.get_objects().get(module_name) {
+                        Some(module_info) => {
+                            module_code.push_str(&module_info.module.python);
+                            module_code.push_str("\n");
+                        },
+                        None => {
+                            return EvaluationResult {
+                                allowed: false,
+                                patch: None,
+                                reason: Some(format!("Could not find module '{}'", module_name)),
+                                warnings
+                            }
+                        }
+                    };
+                }
+            }
+
+            let res = evaluate_policy(value, &request, &module_code);
             if let Some(mut patch) = res.2 {
                 if let Some(patches) = patches.as_mut() {
                     patches.0.append(&mut patch.0);
@@ -158,13 +183,15 @@ impl PolicyEvaluator {
                 }
             }
             self.event_sender
-                .send(PolicyEvent {
-                    policy_reference: value.ref_info.clone(),
-                    event_data: PolicyEventData::Evaluated {
-                        target_identifier,
-                        result: res.0,
-                        reason: res.1.clone(),
-                    },
+                .send(Event {
+                    object_reference: value.ref_info.clone(),
+                    event_data: EventType::Policy(
+                        PolicyEventData::Evaluated {
+                            target_identifier,
+                            result: res.0,
+                            reason: res.1.clone(),
+                        }
+                    ),
                 })
                 .unwrap_or_else(|err| warn!("Could not send event: {:?}", err));
             if res.0 {
@@ -204,48 +231,52 @@ impl PolicyEvaluator {
             patch: patches,
         }
     }
-}
 
-pub async fn validate_policy_admission(
-    request: &admission::AdmissionRequest<Policy>,
-) -> (bool, Option<String>) {
-    if let Some(policy) = request.object.as_ref() {
-        let name = match policy.metadata.name.as_ref() {
-            Some(name) => name.as_str(),
-            None => "-invalidname-",
-        };
-        validate_policy(name, &policy.spec).await
-    } else {
-        (false, Some("No rule found".to_string()))
+    pub fn get_available_modules(&self) -> HashMap<String, ModuleInfo> {
+        let module_store = self.modules.lock().expect("lock failed. Cannot continue");
+
+        return module_store.get_objects();
     }
-}
 
-pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<String>) {
-    let client = Client::try_default()
-        .await
-        .expect("failed to create kube client");
-
-    // Iterate through match items and check whether specified resources exist in the cluster
-    for match_item in policy.target.matches.iter() {
-        let api_resource_exists =
-            match find_k8s_resource_matches(&match_item.api_group, &match_item.kind, &client).await
-            {
-                Ok(resources) => !resources.is_empty(),
-                Err(_) => false,
+    pub fn validate_policy_admission(
+        &self,
+        request: &admission::AdmissionRequest<Policy>
+    ) -> (bool, Option<String>) {
+        if let Some(policy) = request.object.as_ref() {
+            let name = match policy.metadata.name.as_ref() {
+                Some(name) => name.as_str(),
+                None => "-invalidname-",
             };
 
-        if !api_resource_exists {
-            return (
-                false,
-                Some(format!(
-                    "Specified target {}/{} is not available",
-                    match_item.api_group, match_item.kind
-                )),
-            );
+            let mut module_code = String::new();
+
+            if let Some(used_modules) = policy.spec.rule.modules.clone() {
+                let modules = self.get_available_modules();
+
+                for module_name in used_modules.iter() {
+                    match modules.get(module_name) {
+                        Some(module_info) => {
+                            module_code.push_str(&module_info.module.python);
+                            module_code.push_str("\n");
+                        },
+                        None => {
+                            log::warn!("Could not find module '{}'", module_name)
+                        }
+                    };
+                }
+            }
+
+            validate_policy(name, &policy.spec, &module_code)
+        } else {
+            (false, Some("No rule found".to_string()))
         }
     }
+}
 
-    let python_code = policy.rule.python.clone();
+pub fn validate_policy(name: &str, policy: &PolicySpec, module_code: &str) -> (bool, Option<String>) {
+    let mut python_code = String::from(module_code);
+    python_code.push_str(&policy.rule.python.clone());
+
     Python::with_gil(|py| {
         if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
@@ -259,6 +290,7 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<S
 fn evaluate_policy(
     policy: &PolicyInfo,
     request: &ValidationRequest,
+    module_code: &str,
 ) -> (bool, Option<String>, Option<json_patch::Patch>) {
     let name = &policy.name;
     Python::with_gil(|py| {
@@ -267,7 +299,10 @@ fn evaluate_policy(
             Err(err) => return fail(name, &format!("Failed to initialize python: {}", err)),
         };
 
-        match PyModule::from_code(py, &policy.policy.rule.python, "rule.py", "bridgekeeper") {
+        let mut full_code = String::from(module_code);
+        full_code.push_str(&policy.policy.rule.python);
+
+        match PyModule::from_code(py, &full_code, "rule.py", "bridgekeeper") {
             Ok(rule_code) => {
                 if let Ok(validation_function) = rule_code.getattr("validate") {
                     match validation_function.call1((obj,)) {
@@ -289,12 +324,13 @@ fn evaluate_policy(
 pub fn evaluate_policy_audit(
     policy: &PolicyInfo,
     object: DynamicObject,
+    module_code: &str,
 ) -> (bool, Option<String>, Option<json_patch::Patch>) {
     let request = ValidationRequest {
         object,
         operation: Operation::Update,
     };
-    evaluate_policy(policy, &request)
+    evaluate_policy(policy, &request, module_code)
 }
 
 fn extract_result(
@@ -365,7 +401,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request, "");
         assert!(res, "validate function failed: {}", reason.unwrap());
         assert!(reason.is_none());
         assert!(patch.is_none());
@@ -391,7 +427,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request, "");
         assert!(!res);
         assert!(reason.is_some());
         assert_eq!("foobar".to_string(), reason.unwrap());
@@ -418,7 +454,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request, "");
         assert!(!res);
         assert!(reason.is_some());
         assert_eq!(
@@ -451,7 +487,7 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
+        let (res, reason, patch) = evaluate_policy(&policy, &request, "");
         assert!(res, "validate function failed: {}", reason.unwrap());
         assert!(reason.is_none());
         assert!(patch.is_some());
@@ -464,5 +500,37 @@ def validate(request):
             .unwrap(),
             serde_json::to_value(patch.0).unwrap()
         );
+    }
+
+    #[test]
+    fn test_use_of_module() {
+        pyo3::prepare_freethreaded_python();
+        let python = r#"
+def validate(request):
+    return bool_from_module()
+        "#;
+
+        let module_code = r#"
+def bool_from_module():
+    return True
+        "#;
+
+        let policy_spec = PolicySpec::from_python(python.to_string());
+        let policy = PolicyInfo::new("test".to_string(), policy_spec, Default::default());
+
+        let object = DynamicObject {
+            types: None,
+            metadata: ObjectMeta::default(),
+            data: serde_json::Value::Null,
+        };
+        let request = ValidationRequest {
+            object,
+            operation: Operation::Create,
+        };
+
+        let (res, reason, patch) = evaluate_policy(&policy, &request, &module_code);
+        assert!(res, "validate function failed: {}", reason.unwrap());
+        assert!(reason.is_none());
+        assert!(patch.is_none());
     }
 }
