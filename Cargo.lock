@@ -1074,9 +1074,9 @@ dependencies = [
 
 [[package]]
 name = "kube"
-version = "0.79.0"
+version = "0.80.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1e74b6c3633982788dc51a02a356113b4b74e0db48929b2c7447cb57919b8ae"
+checksum = "414d80c69906a91e8ecf4ae16d0fb504e19aa6b099135d35d85298b4e4be3ed3"
 dependencies = [
  "k8s-openapi",
  "kube-client",
@@ -1087,9 +1087,9 @@ dependencies = [
 
 [[package]]
 name = "kube-client"
-version = "0.79.0"
+version = "0.80.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e9065963ad9966fea4a977efaf1eb22381b56ef4882ef19155869649669dfc"
+checksum = "6dc5ae0b9148b4e2ebb0dabda06a0cd65b1eed2f41d792d49787841a68050283"
 dependencies = [
  "base64 0.20.0",
  "bytes",
@@ -1122,9 +1122,9 @@ dependencies = [
 
 [[package]]
 name = "kube-core"
-version = "0.79.0"
+version = "0.80.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "381a6982f9f48aec74022ae3e7012f990e2d9893bdafc9d4fb2c58521899440d"
+checksum = "98331c6f1354893f7c50da069e43a3fd1c84e55bbedc7765d9db22ec3291d07d"
 dependencies = [
  "chrono",
  "form_urlencoded",
@@ -1140,9 +1140,9 @@ dependencies = [
 
 [[package]]
 name = "kube-derive"
-version = "0.79.0"
+version = "0.80.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e300a7410efc929a817fefe80ad0b2b16987cc236eb7737f7686b5d9bffd818"
+checksum = "e4be6ff26b9a34ce831d341e8b33bc78986a33c1be88f5bf9ca84e92e98b1dfb"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1153,9 +1153,9 @@ dependencies = [
 
 [[package]]
 name = "kube-runtime"
-version = "0.79.0"
+version = "0.80.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a11c9e91acd9115b92a7d6cf7210a50b1fdf6d341a146fb0e7eb3423d1548d4"
+checksum = "b698eb8998b46683b0dc3c2ce72c80bc308fc8159f25afa719668c290a037a57"
 dependencies = [
  "ahash",
  "async-trait",
@@ -2013,9 +2013,9 @@ dependencies = [
 
 [[package]]
 name = "schemars"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a5fb6c61f29e723026dc8e923d94c694313212abbecbbe5f55a7748eec5b307"
+checksum = "02c613288622e5f0c3fdc5dbd4db1c5fbe752746b1d1a56a0630b78fd00de44f"
 dependencies = [
  "dyn-clone",
  "schemars_derive",
@@ -2025,9 +2025,9 @@ dependencies = [
 
 [[package]]
 name = "schemars_derive"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f188d036977451159430f3b8dc82ec76364a42b7e289c2b18a9a18f4470058e9"
+checksum = "109da1e6b197438deb6db99952990c7f959572794b80ff93707d55a232545e7c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2383,9 +2383,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.25.0"
+version = "1.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8e00990ebabbe4c14c08aca901caed183ecd5c09562a12c824bb53d3c3fd3af"
+checksum = "03201d01c3c27a29c8a5cee5b55a93ddae1ccf6f08f65365c2c918f8c1b76f64"
 dependencies = [
  "autocfg",
  "bytes",
@@ -2397,7 +2397,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
- "windows-sys 0.42.0",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -2911,21 +2911,6 @@ dependencies = [
  "windows_i686_msvc 0.36.1",
  "windows_x86_64_gnu 0.36.1",
  "windows_x86_64_msvc 0.36.1",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a3e1820f08b8513f676f7ab6c1f99ff312fb97b553d30ff4dd86f9f15728aa7"
-dependencies = [
- "windows_aarch64_gnullvm",
- "windows_aarch64_msvc 0.42.1",
- "windows_i686_gnu 0.42.1",
- "windows_i686_msvc 0.42.1",
- "windows_x86_64_gnu 0.42.1",
- "windows_x86_64_gnullvm",
- "windows_x86_64_msvc 0.42.1",
 ]
 
 [[package]]
