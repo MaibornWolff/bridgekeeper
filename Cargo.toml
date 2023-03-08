@@ -9,10 +9,10 @@ log = "0.4.17"
 kube = {version = "0.80.0", features = ["derive", "admission", "runtime"]}
 k8s-openapi = { version = "0.17.0", default-features = false, features = ["v1_22"] }
 schemars = "0.8.12"
-serde = "1.0.152"
-serde_derive = "1.0.152"
-serde_json = "1.0.93"
-serde_yaml = "0.9.17"
+serde = "1.0.154"
+serde_derive = "1.0.154"
+serde_json = "1.0.94"
+serde_yaml = "0.9.19"
 tokio = { version = "1.26.0", features = ["rt-multi-thread", "macros", "sync"]}
 futures = "0.3.26"
 rocket = {version = "0.5.0-rc.2", features = ["tls", "json"]}
@@ -22,7 +22,7 @@ pythonize = "0.18.0"
 rcgen = "0.10.0"
 base64 = "0.21.0"
 argh = "0.1.10"
-rust-embed = "6.4.2"
+rust-embed = "6.6.0"
 lazy_static = "1.4.0"
 prometheus = {version = "0.13.3", features = ["process"]}
 json-patch = "0.3.0"
