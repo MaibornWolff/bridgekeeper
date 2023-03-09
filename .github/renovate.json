@@ -3,5 +3,9 @@
   "extends": [
     "group:all", ":disableDependencyDashboard", "workarounds:all", ":ignoreModulesAndTests", ":autodetectPinVersions"
   ],
-  "enabledManagers": ["cargo", "dockerfile"]
+  "enabledManagers": ["cargo", "dockerfile"],
+  "timezone": "Europe/Berlin",
+  "schedule": [
+    "before 1pm on Thursday"
+  ]
 }
