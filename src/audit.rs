@@ -430,12 +430,14 @@ async fn push_metrics(metric_families: Vec<MetricFamily>) {
     encoder.encode(&metric_families, &mut buffer).unwrap();
     let body = String::from_utf8(buffer).unwrap();
 
-    let client = reqwest::Client::new();
-    let result = client
-        .put(&format!("{}/metrics/job/bridgekeeper", url))
-        .body(body)
-        .send()
-        .await;
+    let client = hyper::client::Client::new();
+
+    let req = hyper::Request::builder()
+        .method(hyper::Method::PUT)
+        .uri(&format!("{}/metrics/job/bridgekeeper", url))
+        .body(hyper::Body::from(body)).unwrap();
+
+    let result = client.request(req).await;
     if let Err(err) = result {
         error!("Failed to send metrics to pushgateway at {}: {}", url, err);
     }

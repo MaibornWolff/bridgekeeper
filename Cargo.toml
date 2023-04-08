@@ -24,12 +24,12 @@ base64 = "0.21.0"
 argh = "0.1.10"
 rust-embed = "6.6.1"
 lazy_static = "1.4.0"
-prometheus = {version = "0.13.3", features = ["process"]}
+prometheus = { version = "0.13.3", default-features = false, features = ["process"] }
 json-patch = "1.0.0"
 exponential-backoff = "1.2.0"
-reqwest = {version="0.11.16"}
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", default-features = false, features = ["fmt", "json", "std", "registry"] } 
+hyper = { version = "0.14.20", features = ["client"] }
 
 
 [profile.release]
