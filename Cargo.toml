@@ -15,7 +15,6 @@ serde_json = "1.0.95"
 serde_yaml = "0.9.21"
 tokio = { version = "1.27.0", features = ["rt-multi-thread", "macros", "sync"]}
 futures = "0.3.28"
-rocket = {version = "0.5.0-rc.3", features = ["tls", "json"]}
 rustls = "0.21.0"
 pyo3 = "0.18.2"
 pythonize = "0.18.0"
@@ -30,6 +29,8 @@ exponential-backoff = "1.2.0"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", default-features = false, features = ["fmt", "json", "std", "registry"] } 
 hyper = { version = "0.14.20", features = ["client"] }
+axum = { version = "0.6.4" }
+simple-hyper-server-tls = { version = "0.3.2", default-features = false, features = ["tls-openssl", "hyper-h1"] }
 
 
 [profile.release]
