@@ -5,7 +5,7 @@ use crate::{
     policy::PolicyStoreRef,
 };
 use futures::StreamExt;
-use kube::runtime::{watcher, watcher::Event};
+use kube::runtime::{watcher, watcher::{Event, Config as WatcherConfig}};
 use kube::{
     api::{Api, ListParams},
     Client,
@@ -56,7 +56,7 @@ impl Manager {
         let event_sender = self.event_sender.clone();
 
         task::spawn(async move {
-            let watcher = watcher(policies_api.clone(), ListParams::default());
+            let watcher = watcher(policies_api.clone(), WatcherConfig::default());
             let mut pinned_watcher = Box::pin(watcher);
             loop {
                 let res = pinned_watcher.next().await;
