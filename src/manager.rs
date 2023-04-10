@@ -5,7 +5,10 @@ use crate::{
     policy::PolicyStoreRef,
 };
 use futures::StreamExt;
-use kube::runtime::{watcher, watcher::{Event, Config as WatcherConfig}};
+use kube::runtime::{
+    watcher,
+    watcher::{Config as WatcherConfig, Event},
+};
 use kube::{
     api::{Api, ListParams},
     Client,

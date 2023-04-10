@@ -4,6 +4,7 @@ RUN apk add --no-cache musl-dev python3 python3-dev openssl openssl-dev
 ADD Cargo.toml /build/
 WORKDIR /build
 ENV RUSTFLAGS="-C target-feature=-crt-static"
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release
 COPY src /build/src

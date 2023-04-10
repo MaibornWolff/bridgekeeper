@@ -83,7 +83,7 @@ async fn retrieve_certificates(
 }
 
 async fn generate_and_store_certificates(
-    namespace: &String,
+    namespace: &str,
     args: &Args,
     client: &Client,
 ) -> CertKeyPair {
@@ -104,7 +104,7 @@ async fn generate_and_store_certificates(
         let secret_api: Api<Secret> = Api::namespaced(client.clone(), namespace);
         let metadata = ObjectMeta {
             name: Some(SECRET_NAME.to_string()),
-            namespace: Some(namespace.clone()),
+            namespace: Some(namespace.to_owned()),
             ..Default::default()
         };
         let mut data: BTreeMap<String, ByteString> = std::collections::BTreeMap::new();

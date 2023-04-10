@@ -1,5 +1,7 @@
 use crate::crd::Policy;
-use crate::evaluator::{validate_policy_admission, EvaluationResult, PolicyEvaluatorRef};
+use crate::evaluator::{
+    validate_policy_admission, EvaluationResult, PolicyEvaluatorRef, PolicyValidationResult,
+};
 use crate::util::cert::CertKeyPair;
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
@@ -13,9 +15,9 @@ use kube::{
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec, Encoder, TextEncoder};
 use simple_hyper_server_tls::{hyper_from_pem_data, Protocols};
-use tracing::warn;
 use std::convert::TryInto;
 use std::sync::Arc;
+use tracing::warn;
 
 lazy_static! {
     static ref HTTP_REQUEST_COUNTER: CounterVec = register_counter_vec!(
@@ -105,12 +107,16 @@ async fn api_validate_policy(
     })?;
     let mut response: AdmissionResponse = AdmissionResponse::from(&admission_request);
 
-    let (allowed, reason) = validate_policy_admission(&admission_request).await;
-    response.allowed = allowed;
-    if !allowed {
-        response.result.message = reason.unwrap_or_default();
-        response.result.code = 403;
-    }
+    match validate_policy_admission(&admission_request).await {
+        PolicyValidationResult::Valid => {
+            response.allowed = true;
+        }
+        PolicyValidationResult::Invalid { reason } => {
+            response.allowed = false;
+            response.result.message = reason;
+            response.result.code = 403;
+        }
+    };
 
     let review = response.into_review();
     Ok(Json(review))
@@ -138,9 +144,7 @@ async fn metrics() -> Result<impl IntoResponse, ApiError> {
 }
 
 pub async fn server(cert: CertKeyPair, evaluator: PolicyEvaluatorRef) {
-    let state = AppState {
-        evaluator,
-    };
+    let state = AppState { evaluator };
     let app = Router::new()
         .route("/mutate", post(admission_mutate))
         .route("/validate-policy", post(api_validate_policy))
