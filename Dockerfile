@@ -5,11 +5,9 @@ ADD Cargo.toml /build/
 WORKDIR /build
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
 COPY src /build/src
 COPY manifests /build/manifests
-RUN touch src/main.rs && cargo build --release
+RUN cargo build --release
 RUN strip /build/target/release/bridgekeeper
 
 FROM alpine:3.17
