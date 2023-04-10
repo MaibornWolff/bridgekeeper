@@ -13,6 +13,10 @@ def delete(path):
 
 def audit():
     result = subprocess.run("kubectl exec -it -n bridgekeeper deploy/bridgekeeper -- /usr/local/bin/bridgekeeper audit --json --silent", shell=True, capture_output=True, env=os.environ)
+    if result.returncode != 0:
+        # For debugging
+        print(result.stderr)
+        print(result.stdout)
     result.check_returncode()
     try:
         return json.loads(result.stdout.decode("utf-8"))
