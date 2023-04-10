@@ -3,31 +3,25 @@ on: [pull_request]
 
 
 jobs:
-  release:
-    name: Run tests
+  unittests:
+    name: Run unittests
     runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse # Speed up initial build
     steps:
-
       - name: Check out the repo
         uses: actions/checkout@v2
 
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: "1.67.0"
+            toolchain: "1.68.2"
             override: true
             components: clippy
 
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
-
-      - name: Setup k3d
-        uses: nolar/setup-k3d-k3s@v1
-        with:
-          version: v1.22
-          k3d-name: bridgekeeper-test
-          github-token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Compile code
         run: |
@@ -37,7 +31,31 @@ jobs:
         run: |
           set -e
           cargo test
-          
+
+      - name: Check clippy
+        run: |
+          set -e
+          cargo clippy -- -D warnings # Fail on any warnings
+
+
+  functionaltests:
+    name: Run functional tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' 
+
+      - name: Setup k3d
+        uses: nolar/setup-k3d-k3s@v1
+        with:
+          version: v1.22 # Test on the oldest kubernetes version we still want to support
+          k3d-name: bridgekeeper-test
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run functional tests
         run: |
           set -e
