@@ -220,7 +220,7 @@ mod tests {
             Default::default(),
         );
         let policy_no_match_group = PolicyInfo::new(
-            name.clone(),
+            name,
             PolicySpec::from_target(target_no_match_group),
             Default::default(),
         );

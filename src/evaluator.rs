@@ -72,16 +72,27 @@ impl ValidationRequest {
     }
 }
 
-pub struct PolicyEvaluator {
-    policies: PolicyStoreRef,
-    event_sender: EventSender,
-}
-
 pub struct EvaluationResult {
     pub allowed: bool,
     pub reason: Option<String>,
     pub warnings: Vec<String>,
     pub patch: Option<json_patch::Patch>,
+}
+
+pub struct SingleEvaluationResult {
+    pub allowed: bool,
+    pub reason: Option<String>,
+    pub patch: Option<json_patch::Patch>,
+}
+
+pub enum PolicyValidationResult {
+    Valid,
+    Invalid { reason: String },
+}
+
+pub struct PolicyEvaluator {
+    policies: PolicyStoreRef,
+    event_sender: EventSender,
 }
 
 pub type PolicyEvaluatorRef = Arc<PolicyEvaluator>;
@@ -150,7 +161,7 @@ impl PolicyEvaluator {
                 name
             );
             let res = evaluate_policy(value, &request);
-            if let Some(mut patch) = res.2 {
+            if let Some(mut patch) = res.patch {
                 if let Some(patches) = patches.as_mut() {
                     patches.0.append(&mut patch.0);
                 } else {
@@ -162,32 +173,32 @@ impl PolicyEvaluator {
                     policy_reference: value.ref_info.clone(),
                     event_data: PolicyEventData::Evaluated {
                         target_identifier,
-                        result: res.0,
-                        reason: res.1.clone(),
+                        result: res.allowed,
+                        reason: res.reason.clone(),
                     },
                 })
                 .unwrap_or_else(|err| warn!("Could not send event: {:?}", err));
-            if res.0 {
+            if res.allowed {
                 POLICY_EVALUATIONS_SUCCESS
                     .with_label_values(&[value.name.as_str()])
                     .inc();
-                info!("Policy '{}' evaluates to {}", value.name, res.0);
-                if let Some(warning) = res.1 {
+                info!("Policy '{}' evaluates to {}", value.name, res.allowed);
+                if let Some(warning) = res.reason {
                     warnings.push(warning);
                 }
             } else {
                 POLICY_EVALUATIONS_REJECT
                     .with_label_values(&[value.name.as_str()])
                     .inc();
-                let reason = res.1.unwrap_or_else(|| "-".to_string());
+                let reason = res.reason.unwrap_or_else(|| "-".to_string());
                 info!(
                     "Policy '{}' evaluates to {} with message '{}'",
-                    value.name, res.0, reason,
+                    value.name, res.allowed, reason,
                 );
                 if value.policy.enforce.unwrap_or(true) {
                     // If one policy fails no need to evaluate the others
                     return EvaluationResult {
-                        allowed: res.0,
+                        allowed: res.allowed,
                         reason: Some(reason),
                         warnings,
                         patch: None,
@@ -208,7 +219,7 @@ impl PolicyEvaluator {
 
 pub async fn validate_policy_admission(
     request: &admission::AdmissionRequest<Policy>,
-) -> (bool, Option<String>) {
+) -> PolicyValidationResult {
     if let Some(policy) = request.object.as_ref() {
         let name = match policy.metadata.name.as_ref() {
             Some(name) => name.as_str(),
@@ -216,11 +227,13 @@ pub async fn validate_policy_admission(
         };
         validate_policy(name, &policy.spec).await
     } else {
-        (false, Some("No rule found".to_string()))
+        PolicyValidationResult::Invalid {
+            reason: "No rule found".to_string(),
+        }
     }
 }
 
-pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<String>) {
+pub async fn validate_policy(name: &str, policy: &PolicySpec) -> PolicyValidationResult {
     let client = Client::try_default()
         .await
         .expect("failed to create kube client");
@@ -235,13 +248,12 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<S
             };
 
         if !api_resource_exists {
-            return (
-                false,
-                Some(format!(
+            return PolicyValidationResult::Invalid {
+                reason: format!(
                     "Specified target {}/{} is not available",
                     match_item.api_group, match_item.kind
-                )),
-            );
+                ),
+            };
         }
     }
 
@@ -249,17 +261,16 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> (bool, Option<S
     Python::with_gil(|py| {
         if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
-            (false, Some(format!("Python compile error: {:?}", err)))
+            PolicyValidationResult::Invalid {
+                reason: format!("Python compile error: {:?}", err),
+            }
         } else {
-            (true, None)
+            PolicyValidationResult::Valid
         }
     })
 }
 
-fn evaluate_policy(
-    policy: &PolicyInfo,
-    request: &ValidationRequest,
-) -> (bool, Option<String>, Option<json_patch::Patch>) {
+fn evaluate_policy(policy: &PolicyInfo, request: &ValidationRequest) -> SingleEvaluationResult {
     let name = &policy.name;
     Python::with_gil(|py| {
         let obj = match pythonize::pythonize(py, &request) {
@@ -286,10 +297,7 @@ fn evaluate_policy(
     })
 }
 
-pub fn evaluate_policy_audit(
-    policy: &PolicyInfo,
-    object: DynamicObject,
-) -> (bool, Option<String>, Option<json_patch::Patch>) {
+pub fn evaluate_policy_audit(policy: &PolicyInfo, object: DynamicObject) -> SingleEvaluationResult {
     let request = ValidationRequest {
         object,
         operation: Operation::Update,
@@ -301,11 +309,15 @@ fn extract_result(
     name: &str,
     request: &ValidationRequest,
     result: &PyAny,
-) -> (bool, Option<String>, Option<json_patch::Patch>) {
+) -> SingleEvaluationResult {
     if let Ok((code, reason, patched)) = result.extract::<(bool, Option<String>, &PyAny)>() {
         if let Ok(result) = pythonize::depythonize::<serde_json::Value>(patched) {
             match generate_patches(&request.object, &result) {
-                Ok(patch) => (code, reason, Some(patch)),
+                Ok(patch) => SingleEvaluationResult {
+                    allowed: code,
+                    reason,
+                    patch: Some(patch),
+                },
                 Err(error) => fail(name, &format!("failed to compute patch: {}", error)),
             }
         } else {
@@ -315,17 +327,29 @@ fn extract_result(
             )
         }
     } else if let Ok((code, reason)) = result.extract::<(bool, Option<String>)>() {
-        (code, reason, None)
+        SingleEvaluationResult {
+            allowed: code,
+            reason,
+            patch: None,
+        }
     } else if let Ok(code) = result.extract::<bool>() {
-        (code, None, None)
+        SingleEvaluationResult {
+            allowed: code,
+            reason: None,
+            patch: None,
+        }
     } else {
         fail(name, "Validation function did not return expected types")
     }
 }
 
-fn fail(name: &str, reason: &str) -> (bool, Option<String>, Option<json_patch::Patch>) {
+fn fail(name: &str, reason: &str) -> SingleEvaluationResult {
     POLICY_EVALUATIONS_ERROR.with_label_values(&[name]).inc();
-    (false, Some(reason.to_string()), None)
+    SingleEvaluationResult {
+        allowed: false,
+        reason: Some(reason.to_string()),
+        patch: None,
+    }
 }
 
 fn generate_patches(
@@ -365,8 +389,12 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
-        assert!(res, "validate function failed: {}", reason.unwrap());
+        let SingleEvaluationResult {
+            allowed,
+            reason,
+            patch,
+        } = evaluate_policy(&policy, &request);
+        assert!(allowed, "validate function failed: {}", reason.unwrap());
         assert!(reason.is_none());
         assert!(patch.is_none());
     }
@@ -391,8 +419,12 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
-        assert!(!res);
+        let SingleEvaluationResult {
+            allowed,
+            reason,
+            patch,
+        } = evaluate_policy(&policy, &request);
+        assert!(!allowed);
         assert!(reason.is_some());
         assert_eq!("foobar".to_string(), reason.unwrap());
         assert!(patch.is_none());
@@ -418,8 +450,12 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
-        assert!(!res);
+        let SingleEvaluationResult {
+            allowed,
+            reason,
+            patch,
+        } = evaluate_policy(&policy, &request);
+        assert!(!allowed);
         assert!(reason.is_some());
         assert_eq!(
             "Validation function failed: NameError: name 'false' is not defined".to_string(),
@@ -451,8 +487,12 @@ def validate(request):
             operation: Operation::Create,
         };
 
-        let (res, reason, patch) = evaluate_policy(&policy, &request);
-        assert!(res, "validate function failed: {}", reason.unwrap());
+        let SingleEvaluationResult {
+            allowed,
+            reason,
+            patch,
+        } = evaluate_policy(&policy, &request);
+        assert!(allowed, "validate function failed: {}", reason.unwrap());
         assert!(reason.is_none());
         assert!(patch.is_some());
         let patch = patch.unwrap();

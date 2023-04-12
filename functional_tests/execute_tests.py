@@ -12,7 +12,11 @@ def delete(path):
     return subprocess.run(f"kubectl delete -f {path}", shell=True, capture_output=True, env=os.environ)
 
 def audit():
-    result = subprocess.run("../target/debug/bridgekeeper audit --json --silent", shell=True, capture_output=True, env=os.environ)
+    result = subprocess.run("kubectl exec -it -n bridgekeeper deploy/bridgekeeper -- /usr/local/bin/bridgekeeper audit --json --silent", shell=True, capture_output=True, env=os.environ)
+    if result.returncode != 0:
+        # For debugging
+        print(result.stderr)
+        print(result.stdout)
     result.check_returncode()
     try:
         return json.loads(result.stdout.decode("utf-8"))

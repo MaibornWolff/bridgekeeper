@@ -4,11 +4,10 @@ RUN apk add --no-cache musl-dev python3 python3-dev openssl openssl-dev
 ADD Cargo.toml /build/
 WORKDIR /build
 ENV RUSTFLAGS="-C target-feature=-crt-static"
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 COPY src /build/src
 COPY manifests /build/manifests
-RUN touch src/main.rs && cargo build --release
+RUN cargo build --release
 RUN strip /build/target/release/bridgekeeper
 
 FROM alpine:3.17

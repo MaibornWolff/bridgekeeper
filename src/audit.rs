@@ -1,4 +1,5 @@
 use crate::crd::{Policy, PolicyStatus, Violation};
+use crate::evaluator;
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use crate::policy::{load_policies_from_file, PolicyInfo, PolicyStore, PolicyStoreRef};
@@ -118,13 +119,9 @@ struct AuditViolation {
 }
 
 impl AuditViolation {
-    pub fn new(
-        target: EvaluationTarget,
-        policy: &String,
-        message: Option<String>,
-    ) -> AuditViolation {
+    pub fn new(target: EvaluationTarget, policy: &str, message: Option<String>) -> AuditViolation {
         AuditViolation {
-            policy: policy.clone(),
+            policy: policy.to_owned(),
             target,
             message,
         }
@@ -197,16 +194,15 @@ impl Auditor {
         if print_violations {
             println!("Auditing policy {}", policy.name);
         }
-        let (valid, reason) = crate::evaluator::validate_policy(&policy.name, &policy.policy).await;
-        if !valid {
+        if let evaluator::PolicyValidationResult::Invalid { reason } =
+            evaluator::validate_policy(&policy.name, &policy.policy).await
+        {
             if print_violations {
-                println!(
-                    "Failed to validate policy: {}",
-                    reason.unwrap_or_else(|| "N/A".to_string())
-                );
+                println!("Failed to validate policy: {}", reason);
             }
             return Err(load_err("Policy is invalid"));
         }
+
         // collect all matching k8s resources
         let namespaces = namespaces(self.k8s_client.clone()).await?;
         let mut matched_resources: Vec<(KubeApiResource, bool)> = Vec::new();
@@ -247,19 +243,22 @@ impl Auditor {
                             .map_err(kube_err)?;
                         for object in objects {
                             let target = EvaluationTarget::new(resource_description, &object);
-                            let (result, message, _patch) =
-                                crate::evaluator::evaluate_policy_audit(policy, object);
+                            let evaluator::SingleEvaluationResult {
+                                allowed,
+                                reason,
+                                patch: _,
+                            } = evaluator::evaluate_policy_audit(policy, object);
                             NUM_CHECKED_OBJECTS
                                 .with_label_values(&[policy.name.as_str(), namespace.as_str()])
                                 .inc();
-                            if !result {
+                            if !allowed {
                                 NUM_VIOLATIONS
                                     .with_label_values(&[policy.name.as_str(), namespace.as_str()])
                                     .inc();
                                 violations.push(AuditViolation::new(
                                     target,
                                     &policy.name,
-                                    message.clone(),
+                                    reason.clone(),
                                 ));
                             }
                         }
@@ -279,16 +278,19 @@ impl Auditor {
                 };
                 for object in objects {
                     let target = EvaluationTarget::new(resource_description, &object);
-                    let (result, message, _patch) =
-                        crate::evaluator::evaluate_policy_audit(policy, object);
+                    let evaluator::SingleEvaluationResult {
+                        allowed,
+                        reason,
+                        patch: _,
+                    } = evaluator::evaluate_policy_audit(policy, object);
                     NUM_CHECKED_OBJECTS
                         .with_label_values(&[policy.name.as_str(), ""])
                         .inc();
-                    if !result {
+                    if !allowed {
                         NUM_VIOLATIONS
                             .with_label_values(&[policy.name.as_str(), ""])
                             .inc();
-                        violations.push(AuditViolation::new(target, &policy.name, message.clone()));
+                        violations.push(AuditViolation::new(target, &policy.name, reason.clone()));
                     }
                 }
             }
@@ -430,12 +432,15 @@ async fn push_metrics(metric_families: Vec<MetricFamily>) {
     encoder.encode(&metric_families, &mut buffer).unwrap();
     let body = String::from_utf8(buffer).unwrap();
 
-    let client = reqwest::Client::new();
-    let result = client
-        .put(&format!("{}/metrics/job/bridgekeeper", url))
-        .body(body)
-        .send()
-        .await;
+    let client = hyper::client::Client::new();
+
+    let req = hyper::Request::builder()
+        .method(hyper::Method::PUT)
+        .uri(&format!("{}/metrics/job/bridgekeeper", url))
+        .body(hyper::Body::from(body))
+        .unwrap();
+
+    let result = client.request(req).await;
     if let Err(err) = result {
         error!("Failed to send metrics to pushgateway at {}: {}", url, err);
     }

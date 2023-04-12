@@ -6,16 +6,15 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.17"
-kube = {version = "0.81.0", features = ["derive", "admission", "runtime"]}
-k8s-openapi = { version = "0.17.0", default-features = false, features = ["v1_22"] }
+kube = {version = "0.82.0", features = ["derive", "admission", "runtime"]}
+k8s-openapi = { version = "0.18.0", default-features = false, features = ["v1_22"] }
 schemars = "0.8.12"
-serde = "1.0.159"
-serde_derive = "1.0.159"
+serde = "1.0.160"
+serde_derive = "1.0.160"
 serde_json = "1.0.95"
 serde_yaml = "0.9.21"
-tokio = { version = "1.27.0", features = ["rt-multi-thread", "macros", "sync"]}
+tokio = { version = "1.27.0", features = ["rt-multi-thread", "macros"]}
 futures = "0.3.28"
-rocket = {version = "0.5.0-rc.3", features = ["tls", "json"]}
 rustls = "0.21.0"
 pyo3 = "0.18.2"
 pythonize = "0.18.0"
@@ -24,17 +23,20 @@ base64 = "0.21.0"
 argh = "0.1.10"
 rust-embed = "6.6.1"
 lazy_static = "1.4.0"
-prometheus = {version = "0.13.3", features = ["process"]}
+prometheus = { version = "0.13.3", default-features = false, features = ["process"] }
 json-patch = "1.0.0"
 exponential-backoff = "1.2.0"
-reqwest = {version="0.11.16"}
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", default-features = false, features = ["fmt", "json", "std", "registry"] } 
+hyper = { version = "0.14.25", features = ["client"] }
+axum = { version = "0.6.15" }
+simple-hyper-server-tls = { version = "0.3.2", default-features = false, features = ["tls-openssl", "hyper-h1"] }
 
 
 [profile.release]
 lto = true
-opt-level = 'z'  # Optimize for size.
-codegen-units = 1
 # When a panic in a task occures we want the whole process to crash to trigger a kubernetes pod restart
 panic = 'abort'
+# Make binary smaller
+debug = 0
+strip = true
