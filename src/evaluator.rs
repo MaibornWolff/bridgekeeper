@@ -250,8 +250,8 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> PolicyValidatio
         if !api_resource_exists {
             return PolicyValidationResult::Invalid {
                 reason: format!(
-                    "Specified target {}/{} is not available",
-                    match_item.api_group, match_item.kind
+                    "{}: Specified target {}/{} is not available",
+                    name, match_item.api_group, match_item.kind
                 ),
             };
         }
@@ -262,7 +262,7 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> PolicyValidatio
         if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
             PolicyValidationResult::Invalid {
-                reason: format!("Python compile error: {:?}", err),
+                reason: format!("{}: Python compile error: {:?}", name, err),
             }
         } else {
             PolicyValidationResult::Valid
@@ -315,7 +315,7 @@ fn extract_result(
             match generate_patches(&request.object, &result) {
                 Ok(patch) => SingleEvaluationResult {
                     allowed: code,
-                    reason,
+                    reason: reason.map(|r| format!("{}: {}", name, r)),
                     patch: Some(patch),
                 },
                 Err(error) => fail(name, &format!("failed to compute patch: {}", error)),
@@ -329,7 +329,7 @@ fn extract_result(
     } else if let Ok((code, reason)) = result.extract::<(bool, Option<String>)>() {
         SingleEvaluationResult {
             allowed: code,
-            reason,
+            reason: reason.map(|r| format!("{}: {}", name, r)),
             patch: None,
         }
     } else if let Ok(code) = result.extract::<bool>() {
@@ -347,7 +347,7 @@ fn fail(name: &str, reason: &str) -> SingleEvaluationResult {
     POLICY_EVALUATIONS_ERROR.with_label_values(&[name]).inc();
     SingleEvaluationResult {
         allowed: false,
-        reason: Some(reason.to_string()),
+        reason: Some(format!("{}: {}", name, reason)),
         patch: None,
     }
 }
@@ -426,7 +426,7 @@ def validate(request):
         } = evaluate_policy(&policy, &request);
         assert!(!allowed);
         assert!(reason.is_some());
-        assert_eq!("foobar".to_string(), reason.unwrap());
+        assert_eq!("test: foobar".to_string(), reason.unwrap());
         assert!(patch.is_none());
     }
 
@@ -458,7 +458,7 @@ def validate(request):
         assert!(!allowed);
         assert!(reason.is_some());
         assert_eq!(
-            "Validation function failed: NameError: name 'false' is not defined".to_string(),
+            "test: Validation function failed: NameError: name 'false' is not defined".to_string(),
             reason.unwrap()
         );
         assert!(patch.is_none());
@@ -492,7 +492,7 @@ def validate(request):
             reason,
             patch,
         } = evaluate_policy(&policy, &request);
-        assert!(allowed, "validate function failed: {}", reason.unwrap());
+        assert!(allowed, "test: validate function failed: {}", reason.unwrap());
         assert!(reason.is_none());
         assert!(patch.is_some());
         let patch = patch.unwrap();
