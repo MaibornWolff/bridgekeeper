@@ -25,7 +25,7 @@ use serde_json::json;
 use std::time::SystemTime;
 use tokio::task;
 use tokio::time::{sleep, Duration};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 lazy_static! {
     static ref NUM_AUDIT_RUNS: Counter =
@@ -111,6 +111,7 @@ impl EvaluationTarget {
     }
 }
 
+
 #[derive(Serialize)]
 struct AuditViolation {
     policy: String,
@@ -153,7 +154,7 @@ impl Auditor {
         print_violations: bool,
         update_status: bool,
         all: bool,
-    ) -> Result<Vec<AuditViolation>> {
+    ) -> std::result::Result<Vec<AuditViolation>, Vec<AuditViolation>> {
         let mut violations = Vec::new();
         let mut policies = Vec::new();
         // While holding the lock only collect the policies, directly auditing them would make the future of the method not implement Send which breaks the task spawn
@@ -165,6 +166,7 @@ impl Auditor {
                 }
             }
         }
+        let mut finished_policies = 0;
         for policy in policies.iter() {
             match self
                 .audit_policy(policy, print_violations, update_status)
@@ -172,17 +174,24 @@ impl Auditor {
             {
                 Ok(mut result) => {
                     violations.append(&mut result);
+                    finished_policies += 1;
                 }
                 Err(err) => {
-                    return Err(err);
+                    error!("Failed to audit policy {}: {}", policy.name, err);
                 }
             }
         }
-        let now: DateTime<Utc> = SystemTime::now().into();
         NUM_CHECKED_POLICIES.set(policies.len() as f64);
-        NUM_AUDIT_RUNS.inc();
-        TIMESTAMP_LAST_RUN.set(now.timestamp() as f64);
-        Ok(violations)
+        if finished_policies == policies.len() {
+            // Only update metrics if we were successful
+            let now: DateTime<Utc> = SystemTime::now().into();
+            NUM_AUDIT_RUNS.inc();
+            TIMESTAMP_LAST_RUN.set(now.timestamp() as f64);
+            Ok(violations)
+        } else {
+            // return partial violation list
+            Err(violations)
+        }
     }
 
     async fn audit_policy(
@@ -390,7 +399,13 @@ pub async fn run(args: Args) {
                 json_result(violations);
             }
         }
-        Err(err) => error!("Audit failed: {}", err),
+        Err(violations) => {
+            warn!("At least one policy audit failed. Results will be incomplete.");
+            LAST_AUDIT_RUN_SUCCESSFUL.set(0.0);
+            if args.json {
+                json_result(violations);
+            }
+        },
     };
 
     // Push metrics
@@ -411,7 +426,7 @@ pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interva
             info!("Starting audit run");
             match auditor.audit_policies(false, true, false).await {
                 Ok(_) => info!("Finished audit run"),
-                Err(err) => error!("Audit run failed: {}", err),
+                Err(_) => error!("Audit run failed. Results will be incomplete"),
             }
         }
     });
