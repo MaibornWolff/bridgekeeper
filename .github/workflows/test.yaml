@@ -52,7 +52,7 @@ jobs:
       - name: Setup k3d
         uses: nolar/setup-k3d-k3s@v1
         with:
-          version: v1.22 # Test on the oldest kubernetes version we still want to support
+          version: v1.24 # Test on the oldest kubernetes version we still want to support
           k3d-name: bridgekeeper-test
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
