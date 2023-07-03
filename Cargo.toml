@@ -11,29 +11,29 @@ k8s-openapi = { version = "0.18.0", default-features = false, features = ["v1_22
 schemars = "0.8.12"
 serde = "1.0.164"
 serde_derive = "1.0.164"
-serde_json = "1.0.96"
-serde_yaml = "0.9.21"
-tokio = { version = "1.28.2", features = ["rt-multi-thread", "macros"]}
+serde_json = "1.0.99"
+serde_yaml = "0.9.22"
+tokio = { version = "1.29.1", features = ["rt-multi-thread", "macros"]}
 futures = "0.3.28"
 pyo3 = "0.19.0"
 pythonize = "0.19.0"
-rcgen = "0.10.0"
+rcgen = "0.11.1"
 base64 = "0.21.2"
 argh = "0.1.10"
-rust-embed = "6.7.0"
+rust-embed = "6.8.1"
 lazy_static = "1.4.0"
-prometheus = { version = "0.13.3", default-features = false, features = ["process"] }
+prometheus = { version = "0.13.3", default-features = false }
 json-patch = "1.0.0"
 exponential-backoff = "1.2.0"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", default-features = false, features = ["fmt", "json", "std", "registry"] } 
-hyper = { version = "0.14.26", features = ["client"] }
+hyper = { version = "0.14.27", features = ["client"] }
 axum = { version = "0.6.18" }
 simple-hyper-server-tls = { version = "0.3.2", default-features = false, features = ["tls-openssl", "hyper-h1"] }
 
 
 [profile.release]
-lto = true
+lto = false # Smaller size is not worth the compile time increase
 # When a panic in a task occures we want the whole process to crash to trigger a kubernetes pod restart
 panic = 'abort'
 # Make binary smaller
