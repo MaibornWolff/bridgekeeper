@@ -65,6 +65,7 @@ jobs:
           export DOCKER_IMAGE=bridgekeeper
           export DOCKER_TAG=test
           export DOCKER_VERSION=$DOCKER_IMAGE:$DOCKER_TAG
+          export DOCKER_BUILDKIT=1
           docker build . -t $DOCKER_VERSION
           k3d image import -c bridgekeeper-test $DOCKER_VERSION
           helm install --namespace bridgekeeper --create-namespace bridgekeeper ./charts/bridgekeeper --set image.repository=$DOCKER_IMAGE --set image.tag=$DOCKER_TAG --wait
