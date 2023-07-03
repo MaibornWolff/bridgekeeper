@@ -16,7 +16,7 @@ Bridgekeeper is similar to and inspired by [OPA gatekeeper](https://github.com/o
 
 ### Installation Requirements
 
-* A kubernetes cluster (version >= 1.19) with cluster-admin permissions
+* A kubernetes cluster (version >= 1.24) with cluster-admin permissions
 * Helm
 
 ### Installation
@@ -164,7 +164,7 @@ This service is written in Rust and uses [kube-rs](https://github.com/clux/kube-
 
 * Current stable Rust (version >=1.60) with cargo
 * Python >= 3.8 with shared library (pyenv by default does not provide a shared library, install with `PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install <version>` to enable it)
-* A kubernetes cluster (version >= 1.19) with cluster-admin permissions, this guide assumes a local [k3s](https://k3s.io/) cluster set up with [k3d](https://k3d.io/)
+* A kubernetes cluster (version >= 1.24) with cluster-admin permissions, this guide assumes a local [k3s](https://k3s.io/) cluster set up with [k3d](https://k3d.io/)
 * kubectl, helm
 * Tested only on linux, should also work on MacOS
 
