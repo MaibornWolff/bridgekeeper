@@ -7,6 +7,7 @@ use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use axum_server::tls_rustls::RustlsConfig;
 use hyper::{header, HeaderMap, StatusCode};
 use kube::{
     api::DynamicObject,
@@ -14,10 +15,9 @@ use kube::{
 };
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec, Encoder, TextEncoder};
-use simple_hyper_server_tls::{hyper_from_pem_data, Protocols};
 use std::convert::TryInto;
+use std::net::SocketAddr;
 use std::sync::Arc;
-use tracing::warn;
 
 lazy_static! {
     static ref HTTP_REQUEST_COUNTER: CounterVec = register_counter_vec!(
@@ -152,17 +152,14 @@ pub async fn server(cert: CertKeyPair, evaluator: PolicyEvaluatorRef) {
         .route("/health", get(health))
         .with_state(Arc::new(state));
 
-    let server = hyper_from_pem_data(
-        cert.cert.as_bytes(),
-        cert.key.as_bytes(),
-        Protocols::HTTP1,
-        &"0.0.0.0:8081".parse().unwrap(),
-    )
-    .unwrap();
+    let config = RustlsConfig::from_pem(cert.cert.into_bytes(), cert.key.into_bytes())
+        .await
+        .unwrap();
 
-    let mut server = server.serve(app.into_make_service());
-
-    while let Err(e) = (&mut server).await {
-        warn!("HTTP server error: {}", e);
-    }
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8081));
+    tracing::info!("API listening on {}", addr);
+    axum_server::bind_rustls(addr, config)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }

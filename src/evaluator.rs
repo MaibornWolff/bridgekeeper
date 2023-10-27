@@ -492,7 +492,11 @@ def validate(request):
             reason,
             patch,
         } = evaluate_policy(&policy, &request);
-        assert!(allowed, "test: validate function failed: {}", reason.unwrap());
+        assert!(
+            allowed,
+            "test: validate function failed: {}",
+            reason.unwrap()
+        );
         assert!(reason.is_none());
         assert!(patch.is_some());
         let patch = patch.unwrap();

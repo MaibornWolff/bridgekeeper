@@ -111,7 +111,6 @@ impl EvaluationTarget {
     }
 }
 
-
 #[derive(Serialize)]
 struct AuditViolation {
     policy: String,
@@ -328,7 +327,7 @@ impl Auditor {
     async fn report_result(&self, name: String, results: &Vec<AuditViolation>) -> Result<()> {
         let api: Api<Policy> = Api::all(self.k8s_client.clone());
         let mut status = PolicyStatus::new();
-        let mut audit_status = status
+        let audit_status = status
             .audit
             .as_mut()
             .expect("Newly created PolicyStatus always has an audit object");
@@ -405,7 +404,7 @@ pub async fn run(args: Args) {
             if args.json {
                 json_result(violations);
             }
-        },
+        }
     };
 
     // Push metrics
