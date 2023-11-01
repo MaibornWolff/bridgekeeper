@@ -6,15 +6,15 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.20"
-kube = {version = "0.86.0", features = ["derive", "admission", "runtime"]}
+kube = {version = "0.87.1", features = ["derive", "admission", "runtime"]}
 k8s-openapi = { version = "0.20.0", default-features = false, features = ["v1_24"] }
 schemars = "0.8.15"
 serde = "1.0.190"
 serde_derive = "1.0.190"
-serde_json = "1.0.107"
+serde_json = "1.0.108"
 serde_yaml = "0.9.27"
 tokio = { version = "1.33.0", features = ["rt-multi-thread", "macros"]}
-futures = "0.3.28"
+futures = "0.3.29"
 pyo3 = "0.20.0"
 pythonize = "0.20.0"
 rcgen = "0.11.3"
