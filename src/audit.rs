@@ -8,6 +8,7 @@ use crate::util::k8s::{
     find_k8s_resource_matches, list_with_retry, namespaces, patch_status_with_retry,
 };
 use argh::FromArgs;
+use hyper_util::rt::TokioExecutor;
 use k8s_openapi::chrono::{DateTime, Utc};
 use kube::Resource;
 use kube::{
@@ -446,12 +447,12 @@ async fn push_metrics(metric_families: Vec<MetricFamily>) {
     encoder.encode(&metric_families, &mut buffer).unwrap();
     let body = String::from_utf8(buffer).unwrap();
 
-    let client = hyper::client::Client::new();
+    let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build_http();
 
     let req = hyper::Request::builder()
         .method(hyper::Method::PUT)
         .uri(&format!("{}/metrics/job/bridgekeeper", url))
-        .body(hyper::Body::from(body))
+        .body(body)
         .unwrap();
 
     let result = client.request(req).await;
