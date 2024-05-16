@@ -259,7 +259,7 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> PolicyValidatio
 
     let python_code = policy.rule.python.clone();
     Python::with_gil(|py| {
-        if let Err(err) = PyModule::from_code(py, &python_code, "rule.py", "bridgekeeper") {
+        if let Err(err) = PyModule::from_code_bound(py, &python_code, "rule.py", "bridgekeeper") {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
             PolicyValidationResult::Invalid {
                 reason: format!("{}: Python compile error: {:?}", name, err),
@@ -278,11 +278,11 @@ fn evaluate_policy(policy: &PolicyInfo, request: &ValidationRequest) -> SingleEv
             Err(err) => return fail(name, &format!("Failed to initialize python: {}", err)),
         };
 
-        match PyModule::from_code(py, &policy.policy.rule.python, "rule.py", "bridgekeeper") {
+        match PyModule::from_code_bound(py, &policy.policy.rule.python, "rule.py", "bridgekeeper") {
             Ok(rule_code) => {
                 if let Ok(validation_function) = rule_code.getattr("validate") {
                     match validation_function.call1((obj,)) {
-                        Ok(result) => extract_result(name, request, result),
+                        Ok(result) => extract_result(name, request, &result),
                         Err(err) => fail(name, &format!("Validation function failed: {}", err)),
                     }
                 } else {
@@ -308,10 +308,10 @@ pub fn evaluate_policy_audit(policy: &PolicyInfo, object: DynamicObject) -> Sing
 fn extract_result(
     name: &str,
     request: &ValidationRequest,
-    result: &PyAny,
+    result: &Bound<PyAny>,
 ) -> SingleEvaluationResult {
-    if let Ok((code, reason, patched)) = result.extract::<(bool, Option<String>, &PyAny)>() {
-        if let Ok(result) = pythonize::depythonize::<serde_json::Value>(patched) {
+    if let Ok((code, reason, patched)) = result.extract::<(bool, Option<String>, Bound<PyAny>)>() {
+        if let Ok(result) = pythonize::depythonize_bound::<serde_json::Value>(patched) {
             match generate_patches(&request.object, &result) {
                 Ok(patch) => SingleEvaluationResult {
                     allowed: code,

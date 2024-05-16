@@ -35,7 +35,10 @@ pub fn init_event_watcher(client: &Client) -> EventSender {
         let instance = std::env::var("POD_NAME").unwrap_or_else(|_| "dev".to_string());
         while let Some(event) = receiver.recv().await {
             let mut kube_event = KubeEvent::default();
-            kube_event.metadata.generate_name = event.policy_reference.name.clone();
+            kube_event
+                .metadata
+                .generate_name
+                .clone_from(&event.policy_reference.name);
             kube_event.involved_object = event.policy_reference.to_object_reference();
             kube_event.type_ = Some("Normal".to_string());
             kube_event.first_timestamp = Some(Time(Utc::now()));
