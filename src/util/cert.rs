@@ -2,6 +2,7 @@ use k8s_openapi::ByteString;
 
 use crate::constants::{CERT_FILENAME, KEY_FILENAME};
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
@@ -39,25 +40,27 @@ pub fn gen_cert(service_name: String, namespace: &str, local_name: Option<String
         .push(rcgen::SanType::DnsName(format!(
             "{}.{}",
             service_name, namespace
-        )));
+        ).try_into().unwrap()));
     params
         .subject_alt_names
         .push(rcgen::SanType::DnsName(format!(
             "{}.{}.svc",
             service_name, namespace
-        )));
+        ).try_into().unwrap()));
     params
         .subject_alt_names
         .push(rcgen::SanType::DnsName(format!(
             "{}.{}.svc.cluster.local",
             service_name, namespace
-        )));
+        ).try_into().unwrap()));
     if let Some(local_name) = local_name {
         params.subject_alt_names.push(extract_hostname(local_name));
     }
-    let cert = rcgen::Certificate::from_params(params).expect("failed to generate certificate");
-    let cert_data = cert.serialize_pem().expect("failed to serialize cert");
-    let key_data = cert.serialize_private_key_pem();
+	let key_pair = rcgen::KeyPair::generate().unwrap();
+	let cert = params.self_signed(&key_pair).unwrap();
+
+    let cert_data = cert.pem();
+    let key_data = key_pair.serialize_pem();
     CertKeyPair {
         cert: cert_data,
         key: key_data,
@@ -74,7 +77,7 @@ fn extract_hostname(local_name: String) -> rcgen::SanType {
     if is_ip {
         rcgen::SanType::IpAddress(hostname.parse().expect("failed to parse IP"))
     } else {
-        rcgen::SanType::DnsName(hostname.to_string())
+        rcgen::SanType::DnsName(hostname.to_string().try_into().expect("could not parse hostname"))
     }
 }
 
