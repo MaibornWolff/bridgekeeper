@@ -51,16 +51,20 @@ pub async fn patch_status_with_retry<
     api.patch_status(name, pp, patch).await
 }
 
-pub async fn apply<T: Resource>(api: &Api<T>, name: &str, mut object: T) -> kube::Result<T>
+pub async fn apply<T>(api: &Api<T>, name: &str, mut object: T) -> kube::Result<T>
 where
     <T as Resource>::DynamicType: Default,
+    T: Resource,
     T: Clone,
     T: Serialize,
     T: DeserializeOwned,
     T: std::fmt::Debug,
 {
     if let Ok(res) = api.get(name).await {
-        object.meta_mut().resource_version = res.meta().resource_version.clone();
+        object
+            .meta_mut()
+            .resource_version
+            .clone_from(&res.meta().resource_version);
         api.replace(name, &Default::default(), &object).await
     } else {
         api.create(&Default::default(), &object).await

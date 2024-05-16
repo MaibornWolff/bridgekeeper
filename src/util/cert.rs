@@ -35,29 +35,26 @@ impl CertKeyPair {
 
 pub fn gen_cert(service_name: String, namespace: &str, local_name: Option<String>) -> CertKeyPair {
     let mut params = rcgen::CertificateParams::default();
-    params
-        .subject_alt_names
-        .push(rcgen::SanType::DnsName(format!(
-            "{}.{}",
-            service_name, namespace
-        ).try_into().unwrap()));
-    params
-        .subject_alt_names
-        .push(rcgen::SanType::DnsName(format!(
-            "{}.{}.svc",
-            service_name, namespace
-        ).try_into().unwrap()));
-    params
-        .subject_alt_names
-        .push(rcgen::SanType::DnsName(format!(
-            "{}.{}.svc.cluster.local",
-            service_name, namespace
-        ).try_into().unwrap()));
+    params.subject_alt_names.push(rcgen::SanType::DnsName(
+        format!("{}.{}", service_name, namespace)
+            .try_into()
+            .unwrap(),
+    ));
+    params.subject_alt_names.push(rcgen::SanType::DnsName(
+        format!("{}.{}.svc", service_name, namespace)
+            .try_into()
+            .unwrap(),
+    ));
+    params.subject_alt_names.push(rcgen::SanType::DnsName(
+        format!("{}.{}.svc.cluster.local", service_name, namespace)
+            .try_into()
+            .unwrap(),
+    ));
     if let Some(local_name) = local_name {
         params.subject_alt_names.push(extract_hostname(local_name));
     }
-	let key_pair = rcgen::KeyPair::generate().unwrap();
-	let cert = params.self_signed(&key_pair).unwrap();
+    let key_pair = rcgen::KeyPair::generate().unwrap();
+    let cert = params.self_signed(&key_pair).unwrap();
 
     let cert_data = cert.pem();
     let key_data = key_pair.serialize_pem();
@@ -77,7 +74,12 @@ fn extract_hostname(local_name: String) -> rcgen::SanType {
     if is_ip {
         rcgen::SanType::IpAddress(hostname.parse().expect("failed to parse IP"))
     } else {
-        rcgen::SanType::DnsName(hostname.to_string().try_into().expect("could not parse hostname"))
+        rcgen::SanType::DnsName(
+            hostname
+                .to_string()
+                .try_into()
+                .expect("could not parse hostname"),
+        )
     }
 }
 

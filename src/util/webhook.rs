@@ -74,7 +74,7 @@ pub async fn create_policy_validation_webhook(
     }
 }
 
-async fn apply_webhook<T: Resource>(
+async fn apply_webhook<T>(
     client: &kube::Client,
     name: &str,
     webhook_data: String,
@@ -85,6 +85,7 @@ async fn apply_webhook<T: Resource>(
 ) -> kube::Result<T>
 where
     <T as Resource>::DynamicType: Default,
+    T: Resource,
     T: Clone,
     T: Serialize,
     T: DeserializeOwned,
