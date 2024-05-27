@@ -1,6 +1,5 @@
-use k8s_openapi::ByteString;
-
 use crate::constants::{CERT_FILENAME, KEY_FILENAME};
+use k8s_openapi::ByteString;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fs::File;
@@ -38,23 +37,25 @@ pub fn gen_cert(service_name: String, namespace: &str, local_name: Option<String
     params.subject_alt_names.push(rcgen::SanType::DnsName(
         format!("{}.{}", service_name, namespace)
             .try_into()
-            .unwrap(),
+            .expect("Could not add SAN to certificate"),
     ));
     params.subject_alt_names.push(rcgen::SanType::DnsName(
         format!("{}.{}.svc", service_name, namespace)
             .try_into()
-            .unwrap(),
+            .expect("Could not add SAN to certificate"),
     ));
     params.subject_alt_names.push(rcgen::SanType::DnsName(
         format!("{}.{}.svc.cluster.local", service_name, namespace)
             .try_into()
-            .unwrap(),
+            .expect("Could not add SAN to certificate"),
     ));
     if let Some(local_name) = local_name {
         params.subject_alt_names.push(extract_hostname(local_name));
     }
-    let key_pair = rcgen::KeyPair::generate().unwrap();
-    let cert = params.self_signed(&key_pair).unwrap();
+    let key_pair = rcgen::KeyPair::generate().expect("Could not generate TLS keypair");
+    let cert = params
+        .self_signed(&key_pair)
+        .expect("Could not create self-signed certificate");
 
     let cert_data = cert.pem();
     let key_data = key_pair.serialize_pem();

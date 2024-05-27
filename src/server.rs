@@ -1,10 +1,9 @@
-use argh::FromArgs;
-
 use crate::constants::POD_CERTS_DIR;
 use crate::evaluator::PolicyEvaluator;
 use crate::events::init_event_watcher;
 use crate::manager::Manager;
 use crate::policy::PolicyStore;
+use argh::FromArgs;
 
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "server")]

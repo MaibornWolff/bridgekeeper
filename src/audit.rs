@@ -414,8 +414,10 @@ pub async fn run(args: Args) {
 }
 
 fn json_result(violations: Vec<AuditViolation>) {
-    let json = serde_json::to_string(&violations).unwrap();
-    println!("{}", json);
+    match serde_json::to_string(&violations) {
+        Ok(json) => println!("{}", json),
+        Err(err) => error!("Could not render json with violations: {err}"),
+    };
 }
 
 pub async fn launch_loop(client: kube::Client, policies: PolicyStoreRef, interval: u32) {
@@ -444,16 +446,31 @@ async fn push_metrics(metric_families: Vec<MetricFamily>) {
     };
     let encoder = prometheus::TextEncoder::new();
     let mut buffer = vec![];
-    encoder.encode(&metric_families, &mut buffer).unwrap();
-    let body = String::from_utf8(buffer).unwrap();
+    if let Err(err) = encoder.encode(&metric_families, &mut buffer) {
+        error!("Could not encode metrics: {err}");
+        return;
+    }
+    let body = match String::from_utf8(buffer) {
+        Ok(s) => s,
+        Err(err) => {
+            error!("Could not encode metrics: {err}");
+            return;
+        }
+    };
 
     let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build_http();
 
-    let req = hyper::Request::builder()
+    let req = match hyper::Request::builder()
         .method(hyper::Method::PUT)
         .uri(&format!("{}/metrics/job/bridgekeeper", url))
         .body(body)
-        .unwrap();
+    {
+        Ok(r) => r,
+        Err(err) => {
+            error!("Could not prepare request to push metrics: {err}");
+            return;
+        }
+    };
 
     let result = client.request(req).await;
     if let Err(err) = result {

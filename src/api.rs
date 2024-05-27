@@ -138,7 +138,9 @@ async fn metrics() -> Result<impl IntoResponse, ApiError> {
         header::CONTENT_TYPE,
         "application/openmetrics-text; version=1.0.0; charset=utf-8"
             .parse()
-            .unwrap(),
+            .map_err(|err| {
+                ApiError::InvalidRequest(format!("Failed to encode metrics: {}", err))
+            })?,
     );
     Ok((headers, body))
 }
@@ -154,12 +156,12 @@ pub async fn server(cert: CertKeyPair, evaluator: PolicyEvaluatorRef) {
 
     let config = RustlsConfig::from_pem(cert.cert.into_bytes(), cert.key.into_bytes())
         .await
-        .unwrap();
+        .expect("Could not read TLS key and certificate");
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8081));
     tracing::info!("API listening on {}", addr);
     axum_server::bind_rustls(addr, config)
         .serve(app.into_make_service())
         .await
-        .unwrap();
+        .expect("Could not start API listener");
 }
