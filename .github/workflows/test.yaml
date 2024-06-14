@@ -6,8 +6,6 @@ jobs:
   unittests:
     name: Run unittests
     runs-on: ubuntu-latest
-    env:
-      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse # Speed up initial build
     steps:
       - name: Check out the repo
         uses: actions/checkout@v2
@@ -15,13 +13,13 @@ jobs:
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: "1.78.0"
+            toolchain: "1.79.0"
             override: true
             components: clippy
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.11' 
+          python-version: '3.12'
         
       - name: Compile code
         run: |
@@ -47,12 +45,12 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.11' 
+          python-version: '3.12' 
 
       - name: Setup k3d
         uses: nolar/setup-k3d-k3s@v1
         with:
-          version: v1.24 # Test on the oldest kubernetes version we still want to support
+          version: v1.28 # Test on the oldest kubernetes version we still want to support
           k3d-name: bridgekeeper-test
           github-token: ${{ secrets.GITHUB_TOKEN }}
 

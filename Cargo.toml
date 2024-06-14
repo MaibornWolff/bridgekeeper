@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.21"
-kube = {version = "0.91.0", features = ["derive", "admission", "runtime"]}
+kube = {version = "0.92.0", features = ["derive", "admission", "runtime"]}
 k8s-openapi = { version = "0.22.0", default-features = false, features = ["v1_24"] }
 schemars = "0.8.19"
 serde = "1.0.202"
@@ -23,7 +23,7 @@ argh = "0.1.12"
 rust-embed = "8.4.0"
 lazy_static = "1.4.0"
 prometheus = { version = "0.13.4", default-features = false }
-json-patch = "1.4.0" # needs older version as kube-core uses that
+json-patch = "2.0.0" # needs older version as kube-core uses that
 exponential-backoff = "1.2.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "json", "std", "registry"] } 
