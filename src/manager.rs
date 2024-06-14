@@ -65,7 +65,7 @@ impl Manager {
                 let res = pinned_watcher.next().await;
                 if let Some(Ok(event)) = res {
                     match event {
-                        Event::Applied(policy) => {
+                        Event::Apply(policy) | Event::InitApply(policy) => {
                             let mut policies =
                                 policies.lock().expect("lock failed. Cannot continue");
                             if let Some(ref_info) = policies.add_policy(policy) {
@@ -77,7 +77,7 @@ impl Manager {
                                     .unwrap_or_else(|err| warn!("Could not send event: {:?}", err));
                             }
                         }
-                        Event::Deleted(policy) => {
+                        Event::Delete(policy) => {
                             let mut policies =
                                 policies.lock().expect("lock failed. Cannot continue");
                             policies.remove_policy(policy);
