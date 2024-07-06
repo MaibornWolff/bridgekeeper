@@ -61,11 +61,30 @@ impl Manager {
         task::spawn(async move {
             let watcher = watcher(policies_api.clone(), WatcherConfig::default());
             let mut pinned_watcher = Box::pin(watcher);
+            let mut initial_policies_list: Option<Vec<Policy>> = None;
             loop {
                 let res = pinned_watcher.next().await;
                 if let Some(Ok(event)) = res {
                     match event {
-                        Event::Apply(policy) | Event::InitApply(policy) => {
+                        Event::Init => {
+                            initial_policies_list = Some(Vec::new());
+                        }
+                        Event::InitDone => {
+                            if let Some(initial_policies_list) = initial_policies_list.take() {
+                                let mut policies =
+                                    policies.lock().expect("lock failed. Cannot continue");
+                                policies.replace_policies(initial_policies_list);
+                            }
+                        }
+                        Event::InitApply(policy) => {
+                            initial_policies_list.get_or_insert_with(||Vec::new()).push(policy);
+                        }
+                        Event::Apply(policy) => {
+                            if let Some(initial_policies_list) = initial_policies_list.as_mut() {
+                                // We are in the init phase, buffer new policies
+                                initial_policies_list.push(policy);
+                                break;
+                            }
                             let mut policies =
                                 policies.lock().expect("lock failed. Cannot continue");
                             if let Some(ref_info) = policies.add_policy(policy) {
@@ -82,7 +101,6 @@ impl Manager {
                                 policies.lock().expect("lock failed. Cannot continue");
                             policies.remove_policy(policy);
                         }
-                        _ => (),
                     }
                 }
             }

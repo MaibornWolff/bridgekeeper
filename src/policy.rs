@@ -144,6 +144,19 @@ impl PolicyStore {
         self.policies.remove(&name);
         ACTIVE_POLICIES.dec();
     }
+
+    pub fn replace_policies(&mut self, policies: Vec<Policy>) {
+        let num_new_policies = policies.len();
+        self.policies.clear();
+        for policy in policies {
+            let ref_info = create_object_reference(&policy);
+            let name = policy.metadata.name.expect("name is always set");
+            let policy_info = PolicyInfo::new(name.clone(), policy.spec, ref_info.clone());
+            info!("Policy '{}' added", name);
+            self.policies.insert(name, policy_info);
+        }
+        ACTIVE_POLICIES.set(num_new_policies as f64);
+    }
 }
 
 pub fn load_policies_from_file(policies: PolicyStoreRef, filename: &str) -> Result<usize> {
