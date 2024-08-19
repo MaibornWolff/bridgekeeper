@@ -311,7 +311,7 @@ fn extract_result(
     result: &Bound<PyAny>,
 ) -> SingleEvaluationResult {
     if let Ok((code, reason, patched)) = result.extract::<(bool, Option<String>, Bound<PyAny>)>() {
-        if let Ok(result) = pythonize::depythonize_bound::<serde_json::Value>(patched) {
+        if let Ok(result) = pythonize::depythonize::<serde_json::Value>(&patched) {
             match generate_patches(&request.object, &result) {
                 Ok(patch) => SingleEvaluationResult {
                     allowed: code,
