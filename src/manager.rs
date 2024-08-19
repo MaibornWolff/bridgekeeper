@@ -77,7 +77,7 @@ impl Manager {
                             }
                         }
                         Event::InitApply(policy) => {
-                            initial_policies_list.get_or_insert_with(||Vec::new()).push(policy);
+                            initial_policies_list.get_or_insert_with(Vec::new).push(policy);
                         }
                         Event::Apply(policy) => {
                             if let Some(initial_policies_list) = initial_policies_list.as_mut() {
