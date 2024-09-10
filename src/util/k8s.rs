@@ -27,7 +27,10 @@ where
     for duration in BACKOFF.iter() {
         match api.list(&params).await {
             Ok(result) => return Ok(result),
-            Err(_err) => tokio::time::sleep(duration).await,
+            Err(_err) => match duration {
+                Some(duration) => tokio::time::sleep(duration).await,
+                None => break,
+            }
         }
     }
     api.list(&params).await
@@ -45,7 +48,10 @@ pub async fn patch_status_with_retry<
     for duration in BACKOFF.iter() {
         match api.patch_status(name, pp, patch).await {
             Ok(result) => return Ok(result),
-            Err(_err) => tokio::time::sleep(duration).await,
+            Err(_err) => match duration {
+                Some(duration) => tokio::time::sleep(duration).await,
+                None => break,
+            }
         }
     }
     api.patch_status(name, pp, patch).await
