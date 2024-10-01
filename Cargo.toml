@@ -6,8 +6,8 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.22"
-kube = {version = "0.94.1", features = ["derive", "admission", "runtime"]}
-k8s-openapi = { version = "0.22.0", default-features = false, features = ["v1_24"] }
+kube = {version = "0.95.0", features = ["derive", "admission", "runtime"]}
+k8s-openapi = { version = "0.23.0", default-features = false, features = ["v1_28"] }
 schemars = "0.8.21"
 serde = "1.0.210"
 serde_derive = "1.0.210"
@@ -15,7 +15,7 @@ serde_json = "1.0.128"
 serde_yaml = "0.9.34"
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "macros"]}
 futures = "0.3.30"
-pyo3 = "0.22.2"
+pyo3 = "0.22.3"
 pythonize = "0.22.0"
 rcgen = "0.13.1"
 base64 = "0.22.1"
@@ -28,9 +28,9 @@ exponential-backoff = "2.0.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "json", "std", "registry"] } 
 hyper = { version = "1.4.1", features = ["client"] }
-axum = { version = "0.7.5" }
+axum = { version = "0.7.7" }
 axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
-hyper-util = { version = "0.1.8", features = ["client", "client-legacy", "tokio", "http1"] }
+hyper-util = { version = "0.1.9", features = ["client", "client-legacy", "tokio", "http1"] }
 
 
 [profile.release]

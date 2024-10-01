@@ -1,4 +1,4 @@
-FROM rust:1.79-alpine as builder
+FROM rust:1.81-alpine as builder
 RUN mkdir /build
 RUN apk add --no-cache musl-dev python3 python3-dev openssl openssl-dev
 ADD Cargo.toml /build/
