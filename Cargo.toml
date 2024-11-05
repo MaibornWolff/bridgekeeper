@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.22"
-kube = {version = "0.95.0", features = ["derive", "admission", "runtime"]}
+kube = {version = "0.96.0", features = ["derive", "admission", "runtime"]}
 k8s-openapi = { version = "0.23.0", default-features = false, features = ["v1_28"] }
 schemars = "0.8.21"
 serde = "1.0.210"
