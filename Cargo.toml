@@ -23,7 +23,7 @@ argh = "0.1.12"
 rust-embed = "8.5.0"
 lazy_static = "1.5.0"
 prometheus = { version = "0.13.4", default-features = false }
-json-patch = "3.0.0" # needs older version as kube-core uses that
+json-patch = "2.0.0" # needs older version as kube-core uses that
 exponential-backoff = "2.0.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "json", "std", "registry"] } 
