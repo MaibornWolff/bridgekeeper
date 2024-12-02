@@ -14,8 +14,9 @@ use kube::{
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, CounterVec};
 use pyo3::prelude::*;
+use pyo3::ffi::c_str;
 use serde_derive::Serialize;
-use std::sync::Arc;
+use std::{ffi::CString, sync::Arc};
 use tracing::{info, warn};
 
 lazy_static! {
@@ -258,8 +259,14 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> PolicyValidatio
     }
 
     let python_code = policy.rule.python.clone();
+    let python_code = match CString::new(python_code) {
+        Ok(str) => str,
+        Err(err) => return PolicyValidationResult::Invalid {
+            reason: format!("{}: Python script contains invalid null byte: {:?}", name, err),
+        }
+    };
     Python::with_gil(|py| {
-        if let Err(err) = PyModule::from_code_bound(py, &python_code, "rule.py", "bridgekeeper") {
+        if let Err(err) = PyModule::from_code(py, &python_code, c_str!("rule.py"), c_str!("bridgekeeper")) {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
             PolicyValidationResult::Invalid {
                 reason: format!("{}: Python compile error: {:?}", name, err),
@@ -278,7 +285,12 @@ fn evaluate_policy(policy: &PolicyInfo, request: &ValidationRequest) -> SingleEv
             Err(err) => return fail(name, &format!("Failed to initialize python: {}", err)),
         };
 
-        match PyModule::from_code_bound(py, &policy.policy.rule.python, "rule.py", "bridgekeeper") {
+        let python_code = match CString::new(policy.policy.rule.python.clone()) {
+            Ok(str) => str,
+            Err(err) => return fail(name, &format!("Python compile error: {:?}", err)),
+        };
+
+        match PyModule::from_code(py, &python_code, c_str!("rule.py"), c_str!("bridgekeeper")) {
             Ok(rule_code) => {
                 if let Ok(validation_function) = rule_code.getattr("validate") {
                     match validation_function.call1((obj,)) {
