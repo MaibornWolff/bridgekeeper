@@ -5,32 +5,32 @@ authors = ["Sebastian Woehrl <sebastian.woehrl@maibornwolff.de>"]
 edition = "2018"
 
 [dependencies]
-log = "0.4.22"
-kube = {version = "0.97.0", features = ["derive", "admission", "runtime"]}
-k8s-openapi = { version = "0.23.0", default-features = false, features = ["v1_28"] }
+log = "0.4.25"
+kube = {version = "0.98.0", features = ["derive", "admission", "runtime"]}
+k8s-openapi = { version = "0.24.0", default-features = false, features = ["v1_28"] }
 schemars = "0.8.21"
-serde = "1.0.210"
-serde_derive = "1.0.210"
-serde_json = "1.0.128"
+serde = "1.0.217"
+serde_derive = "1.0.217"
+serde_json = "1.0.135"
 serde_yaml = "0.9.34"
-tokio = { version = "1.40.0", features = ["rt-multi-thread", "macros"]}
-futures = "0.3.30"
-pyo3 = "0.23.0"
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros"]}
+futures = "0.3.31"
+pyo3 = "0.23.4"
 pythonize = "0.23.0"
-rcgen = "0.13.1"
+rcgen = "0.13.2"
 base64 = "0.22.1"
-argh = "0.1.12"
+argh = "0.1.13"
 rust-embed = "8.5.0"
 lazy_static = "1.5.0"
 prometheus = { version = "0.13.4", default-features = false }
-json-patch = "3.0.0" # needs older version as kube-core uses that
+json-patch = "3.0.1"
 exponential-backoff = "2.0.0"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "json", "std", "registry"] } 
-hyper = { version = "1.4.1", features = ["client"] }
-axum = { version = "0.7.7" }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", default-features = false, features = ["fmt", "json", "std", "registry"] } 
+hyper = { version = "1.5.2", features = ["client"] }
+axum = { version = "0.8.1" }
 axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
-hyper-util = { version = "0.1.9", features = ["client", "client-legacy", "tokio", "http1"] }
+hyper-util = { version = "0.1.10", features = ["client", "client-legacy", "tokio", "http1"] }
 
 
 [profile.release]

@@ -177,7 +177,7 @@ pub async fn namespaces(k8s_client: Client) -> Result<Vec<String>> {
             .metadata
             .labels
             .as_ref()
-            .map_or(false, |map| map.contains_key("bridgekeeper/ignore"))
+            .is_some_and(|map| map.contains_key("bridgekeeper/ignore"))
         {
             namespaces.push(
                 namespace
