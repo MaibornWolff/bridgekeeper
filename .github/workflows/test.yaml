@@ -10,16 +10,14 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v2
 
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
-            toolchain: "1.84.0"
-            override: true
-            components: clippy
+          components: clippy
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
+          python-version: '3.14'
         
       - name: Compile code
         run: |
@@ -45,12 +43,12 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.12' 
+          python-version: '3.14' 
 
       - name: Setup k3d
         uses: nolar/setup-k3d-k3s@v1
         with:
-          version: v1.28 # Test on the oldest kubernetes version we still want to support
+          version: v1.31 # Test on the oldest kubernetes version we still want to support
           k3d-name: bridgekeeper-test
           github-token: ${{ secrets.GITHUB_TOKEN }}
 

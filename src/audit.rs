@@ -9,7 +9,7 @@ use crate::util::k8s::{
 };
 use argh::FromArgs;
 use hyper_util::rt::TokioExecutor;
-use k8s_openapi::chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc};
 use kube::Resource;
 use kube::{
     api::{Api, DynamicObject, ListParams, Patch, PatchParams},
@@ -141,7 +141,7 @@ impl Auditor {
         policies: PolicyStoreRef,
         //event_sender: EventSender,
     ) -> Auditor {
-        pyo3::prepare_freethreaded_python();
+        pyo3::Python::initialize();
         Auditor {
             k8s_client: client,
             policies,
