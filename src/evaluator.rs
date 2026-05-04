@@ -104,7 +104,7 @@ impl PolicyEvaluator {
             policies,
             event_sender,
         };
-        pyo3::prepare_freethreaded_python();
+        pyo3::Python::initialize();
         Arc::new(evaluator)
     }
 
@@ -265,7 +265,7 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> PolicyValidatio
             reason: format!("{}: Python script contains invalid null byte: {:?}", name, err),
         }
     };
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         if let Err(err) = PyModule::from_code(py, &python_code, c_str!("rule.py"), c_str!("bridgekeeper")) {
             POLICY_VALIDATIONS_FAIL.with_label_values(&[name]).inc();
             PolicyValidationResult::Invalid {
@@ -279,7 +279,7 @@ pub async fn validate_policy(name: &str, policy: &PolicySpec) -> PolicyValidatio
 
 fn evaluate_policy(policy: &PolicyInfo, request: &ValidationRequest) -> SingleEvaluationResult {
     let name = &policy.name;
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let obj = match pythonize::pythonize(py, &request) {
             Ok(obj) => obj,
             Err(err) => return fail(name, &format!("Failed to initialize python: {}", err)),
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_simple_evaluate() {
-        pyo3::prepare_freethreaded_python();
+        pyo3::Python::initialize();
         let python = r#"
 def validate(request):
     return True
@@ -413,7 +413,7 @@ def validate(request):
 
     #[test]
     fn test_simple_evaluate_with_reason() {
-        pyo3::prepare_freethreaded_python();
+        pyo3::Python::initialize();
         let python = r#"
 def validate(request):
     return False, "foobar"
@@ -444,7 +444,7 @@ def validate(request):
 
     #[test]
     fn test_evaluate_with_invalid_python() {
-        pyo3::prepare_freethreaded_python();
+        pyo3::Python::initialize();
         let python = r#"
 def validate(request):
     return false, "foobar"
@@ -478,7 +478,7 @@ def validate(request):
 
     #[test]
     fn test_simple_mutate() {
-        pyo3::prepare_freethreaded_python();
+        pyo3::Python::initialize();
         let python = r#"
 def validate(request):
     object = request["object"]
